@@ -117,7 +117,7 @@ class LogEntry(Document):
             kwargs.setdefault('content_type_id', content_type.id)
             kwargs.setdefault('content_type_app_label', content_type.app_label)
             kwargs.setdefault('content_type_model', content_type.model)
-            kwargs.setdefault('object_pk', pk)
+            kwargs.setdefault('object_pk', str(pk))
             kwargs.setdefault('object_repr', smart_str(instance))
             kwargs.setdefault('timestamp', timezone.now())
 
