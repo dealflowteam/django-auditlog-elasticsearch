@@ -11,8 +11,7 @@ with open(os.path.join(os.path.dirname(__file__), "README.md"), "r") as readme_f
 setup(
     name='django-auditlog',
     version=auditlog.__version__,
-    packages=['auditlog', 'auditlog.migrations', 'auditlog.management', 'auditlog.management.commands',
-              'auditlog.utils', 'auditlog.templates'],
+    packages=['auditlog'],
     url='https://github.com/jjkester/django-auditlog',
     license='MIT',
     author='Jan-Jelle Kester',
