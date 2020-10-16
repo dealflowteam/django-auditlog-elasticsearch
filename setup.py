@@ -12,7 +12,7 @@ setup(
     name='django-auditlog',
     version=auditlog.__version__,
     packages=['auditlog', 'auditlog.migrations', 'auditlog.management', 'auditlog.management.commands',
-              'auditlog.utils'],
+              'auditlog.utils', 'auditlog.templates'],
     url='https://github.com/jjkester/django-auditlog',
     license='MIT',
     author='Jan-Jelle Kester',

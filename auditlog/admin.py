@@ -37,6 +37,9 @@ class DummyModelAdmin(admin.ModelAdmin, LogEntryAdminMixin):
             path('<path:object_id>/', self.detail_view, name='%s_%s_change' % info),
         ]
 
+    def has_add_permission(self, request, obj=None):
+        return False
+
     def get_queryset(self, request):
         s = LogEntry.search()
         s = s.sort('-timestamp')
