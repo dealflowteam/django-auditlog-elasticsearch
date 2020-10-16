@@ -8,7 +8,7 @@ from elasticsearch.helpers import bulk
 from elasticsearch_dsl import Document, connections, Keyword, Date, Nested, InnerDoc, Text
 
 # Define a default Elasticsearch client
-connections.create_connection(hosts=['localhost'])
+connections.create_connection(hosts=[settings.ELASTICSEARCH_HOST])
 
 
 MAX = 75
