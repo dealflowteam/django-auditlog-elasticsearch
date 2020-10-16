@@ -60,4 +60,6 @@ ROOT_URLCONF = 'auditlog_tests.urls'
 USE_TZ = True
 
 
-AUDITLOG_INDEX_NAME = 'logs-dealflow'
+AUDITLOG_INDEX_NAME = 'test-logs'
+
+ELASTICSEARCH_HOST = 'localhost'
