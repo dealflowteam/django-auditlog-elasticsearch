@@ -11,7 +11,8 @@ with open(os.path.join(os.path.dirname(__file__), "README.md"), "r") as readme_f
 setup(
     name='django-auditlog',
     version=auditlog.__version__,
-    packages=['auditlog', 'auditlog.migrations', 'auditlog.management', 'auditlog.management.commands'],
+    packages=['auditlog', 'auditlog.migrations', 'auditlog.management', 'auditlog.management.commands',
+              'auditlog.utils'],
     url='https://github.com/jjkester/django-auditlog',
     license='MIT',
     author='Jan-Jelle Kester',
@@ -22,7 +23,6 @@ setup(
         'django-jsonfield>=1.0.0',
         'python-dateutil>=2.6.0',
         'elasticsearch-dsl==7.3.0',
-        'django-admin-rangefilter'
     ],
     zip_safe=False,
     classifiers=[
