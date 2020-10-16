@@ -10,6 +10,7 @@ SECRET_KEY = 'test'
 INSTALLED_APPS = [
     'django.contrib.auth',
     'django.contrib.contenttypes',
+    'grappelli',
     'django.contrib.messages',
     'django.contrib.sessions',
     'django.contrib.admin',
@@ -57,3 +58,6 @@ STATIC_URL = '/static/'
 ROOT_URLCONF = 'auditlog_tests.urls'
 
 USE_TZ = True
+
+
+AUDITLOG_INDEX_NAME = 'logs-dealflow'

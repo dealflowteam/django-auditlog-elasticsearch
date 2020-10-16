@@ -20,7 +20,9 @@ setup(
     long_description_content_type='text/markdown',
     install_requires=[
         'django-jsonfield>=1.0.0',
-        'python-dateutil>=2.6.0'
+        'python-dateutil>=2.6.0',
+        'elasticsearch-dsl==7.3.0',
+        'django-admin-rangefilter'
     ],
     zip_safe=False,
     classifiers=[
