@@ -42,9 +42,9 @@ class LogEntry(Document):
     content_type_app_label = Keyword(required=True)
     content_type_model = Keyword(required=True)
 
-    object_id = Keyword(required=True)
+    object_id = Keyword()
     object_pk = Keyword()
-    object_repr = Text(required=True)
+    object_repr = Text()
 
     actor_id = Keyword()
     actor_email = Keyword()
