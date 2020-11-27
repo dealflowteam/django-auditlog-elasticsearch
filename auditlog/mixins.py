@@ -71,7 +71,7 @@ class AuditlogAdminHistoryMixin(LogEntryAdminMixin):
         instance = self.model.objects.get(pk=kwargs['object_id'])
         content_type = ContentType.objects.get_for_model(instance)
         s = LogEntry.search().query(
-            Q('bool', must=[Q('match', object_id=instance.pk), Q('match', content_type_id=content_type.pk)])
+            Q('bool', must=[Q('match', object_id=str(instance.pk)), Q('match', content_type_id=content_type.pk)])
         ).sort('timestamp')
 
         for entry in s:
