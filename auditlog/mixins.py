@@ -62,8 +62,9 @@ class AuditlogAdminHistoryMixin(LogEntryAdminMixin):
 
     def get_urls(self):
         urls = super().get_urls()
+        info = self.model._meta.app_label, self.model._meta.model_name
         new_urls = [
-            path('<object_id>/auditlog-history/', self.auditlog_history, name='auditlog-history')
+            path('<object_id>/auditlog-history/', self.auditlog_history, name='%s_%s_auditlog-history' % info)
         ]
         return new_urls + urls
 
@@ -71,7 +72,7 @@ class AuditlogAdminHistoryMixin(LogEntryAdminMixin):
         instance = self.model.objects.get(pk=kwargs['object_id'])
         content_type = ContentType.objects.get_for_model(instance)
         s = LogEntry.search().query(
-            Q('bool', must=[Q('match', object_id=str(instance.pk)), Q('match', content_type_id=content_type.pk)])
+            Q('bool', must=[Q('match', object_pk=str(instance.pk)), Q('match', content_type_id=content_type.pk)])
         ).sort('timestamp')
 
         for entry in s:
@@ -87,5 +88,6 @@ class AuditlogAdminHistoryMixin(LogEntryAdminMixin):
         return render(request, 'admin/auditlog_history.html', context)
 
     def history(self, obj):
-        link = reverse('admin:auditlog-history', kwargs={'object_id': obj.pk})
+        info = self.model._meta.app_label, self.model._meta.model_name
+        link = reverse(f'admin:{info[0]}_{info[1]}_auditlog-history', kwargs={'object_id': obj.pk})
         return format_html(u'<a href="{}">History</a>', link)
