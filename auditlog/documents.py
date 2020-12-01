@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
@@ -128,8 +130,11 @@ class LogEntry(Document):
         return None
 
     def save(self, using=None, index=None, validate=True, skip_empty=True, **kwargs):
-        log_created.send(self.__class__, instance=self)
-        return super().save(using, index, validate, skip_empty, **kwargs)
+        try:
+            log_created.send(self.__class__, instance=self)
+            return super().save(using, index, validate, skip_empty, **kwargs)
+        except Exception:
+            logging.exception("Error when saving log to elasticsearch", extra={'log_entry': self.to_dict()})
 
     @classmethod
     def _get_pk_value(cls, instance):
