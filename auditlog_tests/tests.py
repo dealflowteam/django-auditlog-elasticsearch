@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse
-from django.test import TestCase, RequestFactory
+from django.test import TestCase, RequestFactory, TransactionTestCase
 from django.utils import timezone
 
 from auditlog.documents import LogEntry, log_created
@@ -83,7 +83,7 @@ class BaseModelTest(BaseTest):
         self.test_create()
 
 
-class SimpleModelTest(BaseModelTest, TestCase):
+class SimpleModelTest(BaseModelTest, TransactionTestCase):
 
     def setUp(self):
         super().setUp()
@@ -91,28 +91,28 @@ class SimpleModelTest(BaseModelTest, TestCase):
         self.obj = SimpleModel.objects.create(text='I am not difficult.')
 
 
-class AltPrimaryKeyModelTest(BaseModelTest, TestCase):
+class AltPrimaryKeyModelTest(BaseModelTest, TransactionTestCase):
     def setUp(self):
         super().setUp()
         self.sender = AltPrimaryKeyModel
         self.obj = AltPrimaryKeyModel.objects.create(key=str(datetime.datetime.now()), text='I am strange.')
 
 
-class UUIDPrimaryKeyModelModelTest(BaseModelTest, TestCase):
+class UUIDPrimaryKeyModelModelTest(BaseModelTest, TransactionTestCase):
     def setUp(self):
         super().setUp()
         self.sender = UUIDPrimaryKeyModel
         self.obj = UUIDPrimaryKeyModel.objects.create(text='I am strange.')
 
 
-class ProxyModelTest(BaseModelTest, TestCase):
+class ProxyModelTest(BaseModelTest, TransactionTestCase):
     def setUp(self):
         super().setUp()
         self.sender = ProxyModel
         self.obj = ProxyModel.objects.create(text='I am not what you think.')
 
 
-class ManyRelatedModelTest(BaseTest, TestCase):
+class ManyRelatedModelTest(BaseTest, TransactionTestCase):
     """
     Test the behaviour of a many-to-many relationship.
     """
@@ -182,7 +182,7 @@ class MiddlewareTest(TestCase):
         self.assertFalse(log_created.has_listeners(LogEntry))
 
 
-class SimpeIncludeModelTest(BaseTest, TestCase):
+class SimpeIncludeModelTest(BaseTest, TransactionTestCase):
     """Log only changes in include_fields"""
 
     def test_register_include_fields(self):
@@ -201,7 +201,7 @@ class SimpeIncludeModelTest(BaseTest, TestCase):
         self.assertTrue(self.mock_save.call_count == 2, msg="There are two log entries")
 
 
-class SimpeExcludeModelTest(BaseTest, TestCase):
+class SimpeExcludeModelTest(BaseTest, TransactionTestCase):
     """Log only changes that are not in exclude_fields"""
 
     def test_register_exclude_fields(self):
@@ -220,7 +220,7 @@ class SimpeExcludeModelTest(BaseTest, TestCase):
         self.assertTrue(self.mock_save.call_count == 2, msg="There are two log entries")
 
 
-class SimpleMappingModelTest(BaseTest, TestCase):
+class SimpleMappingModelTest(BaseTest, TransactionTestCase):
     """Diff displays fields as mapped field names where available through mapping_fields"""
 
     def test_register_mapping_fields(self):
@@ -241,7 +241,7 @@ class SimpleMappingModelTest(BaseTest, TestCase):
         )
 
 
-class DateTimeFieldModelTest(BaseTest, TestCase):
+class DateTimeFieldModelTest(BaseTest, TransactionTestCase):
     """Tests if DateTimeField changes are recognised correctly"""
 
     utc_plus_one = timezone.get_fixed_timezone(datetime.timedelta(hours=1))
@@ -364,7 +364,7 @@ class DateTimeFieldModelTest(BaseTest, TestCase):
         dtm.save()
 
 
-class UnregisterTest(BaseTest, TestCase):
+class UnregisterTest(BaseTest, TransactionTestCase):
     def setUp(self):
         super().setUp()
         auditlog.unregister(SimpleModel)
@@ -409,7 +409,7 @@ class UnregisterTest(BaseTest, TestCase):
 
 @mock.patch('auditlog.documents.LogEntry.get')
 @mock.patch('auditlog.documents.LogEntry.search')
-class AdminPanelTest(BaseTest, TestCase):
+class AdminPanelTest(BaseTest, TransactionTestCase):
 
     def setUp(self):
         super().setUp()
@@ -432,7 +432,7 @@ class AdminPanelTest(BaseTest, TestCase):
         self.assertEqual(res.status_code, 200)
 
 
-class NoDeleteHistoryTest(BaseTest, TestCase):
+class NoDeleteHistoryTest(BaseTest, TransactionTestCase):
     def test_delete_related(self):
         instance = SimpleModel.objects.create(integer=1)
         self.assertEqual(self.mock_save.call_count, 1)
