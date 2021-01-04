@@ -1,10 +1,14 @@
 from django import urls as urlresolvers
 from django.conf import settings
+from django.contrib.contenttypes.models import ContentType
+from django.shortcuts import render
+from django.urls import path, reverse
 from django.urls.exceptions import NoReverseMatch
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
+from elasticsearch_dsl import Q
 
-from auditlog.models import LogEntry
+from auditlog.documents import LogEntry
 
 
 class LogEntryAdminMixin(object):
@@ -48,3 +52,42 @@ class LogEntryAdminMixin(object):
 
         msg += '</table>'
         return mark_safe(msg)
+
+
+class AuditlogAdminHistoryMixin(LogEntryAdminMixin):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.list_display = list(self.list_display) + ['history']
+        self.readonly_fields = list(self.readonly_fields) + ['history']
+
+    def get_urls(self):
+        urls = super().get_urls()
+        info = self.model._meta.app_label, self.model._meta.model_name
+        new_urls = [
+            path('<object_id>/auditlog-history/', self.auditlog_history, name='%s_%s_auditlog-history' % info)
+        ]
+        return new_urls + urls
+
+    def auditlog_history(self, request, *args, **kwargs):
+        instance = self.model.objects.get(pk=kwargs['object_id'])
+        content_type = ContentType.objects.get_for_model(instance)
+        s = LogEntry.search().query(
+            Q('bool', must=[Q('match', object_pk=str(instance.pk)), Q('match', content_type_id=content_type.pk)])
+        ).sort('timestamp')
+
+        for entry in s:
+            entry.user_link = self.user(entry)
+            link = reverse('admin:auditlog_logmodel_change', kwargs={'object_id': entry.meta.id})
+            entry.log_link = format_html(u'<a href="{}">Log entry</a>', link)
+
+        context = {
+            'title': f'Change history: {instance}',
+            'opts': self.model._meta,
+            'log_entry_list': s
+        }
+        return render(request, 'admin/auditlog_history.html', context)
+
+    def history(self, obj):
+        info = self.model._meta.app_label, self.model._meta.model_name
+        link = reverse(f'admin:{info[0]}_{info[1]}_auditlog-history', kwargs={'object_id': obj.pk})
+        return format_html(u'<a href="{}">History</a>', link)

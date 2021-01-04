@@ -2,6 +2,8 @@ import uuid
 
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
+from hashid_field import HashidAutoField
+
 from auditlog.models import AuditlogHistoryField
 from auditlog.registry import auditlog
 
@@ -18,6 +20,11 @@ class SimpleModel(models.Model):
     datetime = models.DateTimeField(auto_now=True)
 
     history = AuditlogHistoryField()
+
+
+class HashIdModel(models.Model):
+    id = HashidAutoField(primary_key=True)
+    text = models.TextField(blank=True)
 
 
 class AltPrimaryKeyModel(models.Model):
@@ -226,3 +233,4 @@ auditlog.register(ChoicesFieldModel)
 auditlog.register(CharfieldTextfieldModel)
 auditlog.register(PostgresArrayFieldModel)
 auditlog.register(NoDeleteHistoryModel)
+auditlog.register(HashIdModel)
