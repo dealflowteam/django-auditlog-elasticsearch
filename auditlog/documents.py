@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
@@ -124,10 +126,15 @@ class LogEntry(Document):
             if isinstance(pk, int):
                 kwargs.setdefault('object_id', pk)
             log_entry = cls(**kwargs)
-            log_created.send(cls, instance=log_entry)
-            log_entry.save()
             return log_entry
         return None
+
+    def save(self, using=None, index=None, validate=True, skip_empty=True, **kwargs):
+        try:
+            log_created.send(self.__class__, instance=self)
+            return super().save(using, index, validate, skip_empty, **kwargs)
+        except Exception:
+            logging.exception("Error when saving log to elasticsearch", extra={'log_entry': self.to_dict()})
 
     @classmethod
     def _get_pk_value(cls, instance):

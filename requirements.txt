@@ -18,3 +18,4 @@ psycopg2-binary
 elasticsearch-dsl
 elasticsearch
 django-grappelli
+django-hashid-field
