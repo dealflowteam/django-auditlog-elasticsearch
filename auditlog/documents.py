@@ -123,8 +123,9 @@ class LogEntry(Document):
             kwargs.setdefault('object_repr', smart_str(instance))
             kwargs.setdefault('timestamp', timezone.now())
 
-            if isinstance(pk, int):
-                kwargs.setdefault('object_id', pk)
+            id_ = instance._meta.pk.get_prep_value(pk)
+            if isinstance(id_, int):
+                kwargs.setdefault('object_id', id_)
             log_entry = cls(**kwargs)
             return log_entry
         return None

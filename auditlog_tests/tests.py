@@ -14,7 +14,7 @@ from auditlog.receivers import log_create, log_update, log_delete
 from auditlog.registry import auditlog
 from auditlog_tests.models import SimpleModel, AltPrimaryKeyModel, UUIDPrimaryKeyModel, \
     ProxyModel, SimpleIncludeModel, SimpleExcludeModel, SimpleMappingModel, ManyRelatedModel, \
-    DateTimeFieldModel, NoDeleteHistoryModel
+    DateTimeFieldModel, NoDeleteHistoryModel, HashIdModel
 
 
 class BaseTest:
@@ -41,6 +41,7 @@ class BaseModelTest(BaseTest):
         loge_entry = log_create(self.sender, self.obj, True)
         self.assertEqual(loge_entry.action, LogEntry.Action.CREATE, msg="Action is 'CREATE'")
         self.assertEqual(loge_entry.object_repr, str(self.obj), msg="Representation is equal")
+        self.assertEqual(loge_entry.object_pk, str(self.obj.pk))
 
     def test_update(self):
         """Updates are logged correctly."""
@@ -89,6 +90,19 @@ class SimpleModelTest(BaseModelTest, TransactionTestCase):
         super().setUp()
         self.sender = SimpleModel
         self.obj = SimpleModel.objects.create(text='I am not difficult.')
+
+
+class HashIdModelTest(BaseModelTest, TransactionTestCase):
+    def setUp(self):
+        super().setUp()
+        self.sender = SimpleModel
+        self.obj = HashIdModel.objects.create(text='I am not difficult.')
+
+    def test_create(self):
+        self.assertEqual(self.mock_save.call_count, 1)
+        log_entry = log_create(self.sender, self.obj, True)
+        self.assertEqual(log_entry.object_pk, str(self.obj.pk))
+        self.assertEqual(log_entry.object_id, self.obj.pk.id)
 
 
 class AltPrimaryKeyModelTest(BaseModelTest, TransactionTestCase):
