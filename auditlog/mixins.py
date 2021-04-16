@@ -69,10 +69,14 @@ class AuditlogAdminHistoryMixin(LogEntryAdminMixin):
         return new_urls + urls
 
     def auditlog_history(self, request, *args, **kwargs):
-        instance = self.model.objects.get(pk=kwargs['object_id'])
+        pk = self.model._meta.pk.to_python(kwargs['object_id'])
+        id_ = self.model._meta.pk.get_prep_value(kwargs['object_id'])
+        instance = self.model.objects.get(pk=pk)
         content_type = ContentType.objects.get_for_model(instance)
         s = LogEntry.search().query(
-            Q('bool', must=[Q('match', object_pk=str(instance.pk)), Q('match', content_type_id=content_type.pk)])
+            Q('bool', must=[Q('bool', should=[Q('match', object_pk=str(instance.pk)),
+                                              Q('match', object_id=id_)]),
+                            Q('match', content_type_id=content_type.pk)])
         ).sort('timestamp')
 
         for entry in s:

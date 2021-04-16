@@ -71,7 +71,7 @@ class AuditlogMiddleware(MiddlewareMixin):
                 except ValueError:
                     auth_user_model = apps.get_model('auth', 'user')
                 if sender == LogEntry and isinstance(user, auth_user_model) and instance.actor_id is None:
-                    instance.actor_id = str(user.id)
+                    instance.actor_id = user._meta.pk.get_prep_value(user.pk)
                     instance.actor_email = user.email
                     instance.actor_first_name = user.first_name
                     instance.actor_last_name = user.last_name
