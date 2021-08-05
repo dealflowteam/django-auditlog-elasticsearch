@@ -16,6 +16,6 @@ tox
 codecov
 psycopg2-binary
 elasticsearch-dsl
-elasticsearch
+elasticsearch==7.12
 django-grappelli
 django-hashid-field
