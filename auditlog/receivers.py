@@ -1,9 +1,15 @@
-import json
-
-from django.db import transaction
+from django.conf import settings
 
 from auditlog.diff import model_instance_diff
-from auditlog.documents import LogEntry
+from auditlog.documents import ElasticSearchLogEntry
+from auditlog.models import LogEntry
+
+
+def get_backend():
+    if getattr(settings, 'AUDITLOG_USE_ELASTIC_SEARCH', True):
+        return ElasticSearchLogEntry
+    else:
+        return LogEntry.objects
 
 
 def log_create(sender, instance, created, **kwargs):
@@ -14,12 +20,11 @@ def log_create(sender, instance, created, **kwargs):
     """
     if created:
         changes = model_instance_diff(None, instance)
-        log_entry = LogEntry.log_create(
+        log_entry = get_backend().log_create(
             instance,
             action=LogEntry.Action.CREATE,
             changes=changes,
         )
-        transaction.on_commit(lambda: log_entry.save())
         return log_entry
 
 
@@ -41,12 +46,11 @@ def log_update(sender, instance, **kwargs):
 
             # Log an entry only if there are changes
             if changes:
-                log_entry = LogEntry.log_create(
+                log_entry = get_backend().log_create(
                     instance,
                     action=LogEntry.Action.UPDATE,
                     changes=changes,
                 )
-                transaction.on_commit(lambda: log_entry.save())
                 return log_entry
 
 
@@ -58,10 +62,9 @@ def log_delete(sender, instance, **kwargs):
     """
     if instance.pk is not None:
         changes = model_instance_diff(instance, None)
-        log_entry = LogEntry.log_create(
+        log_entry = get_backend().log_create(
             instance,
             action=LogEntry.Action.DELETE,
             changes=changes,
         )
-        transaction.on_commit(lambda: log_entry.save())
         return log_entry

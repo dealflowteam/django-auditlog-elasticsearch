@@ -8,7 +8,7 @@ from django.http import HttpResponse
 from django.test import TestCase, RequestFactory, TransactionTestCase
 from django.utils import timezone
 
-from auditlog.documents import LogEntry, log_created
+from auditlog.documents import ElasticSearchLogEntry, log_created
 from auditlog.middleware import AuditlogMiddleware
 from auditlog.receivers import log_create, log_update, log_delete
 from auditlog.registry import auditlog
@@ -39,7 +39,7 @@ class BaseModelTest(BaseTest):
         self.assertEqual(self.mock_save.call_count, 1)
 
         loge_entry = log_create(self.sender, self.obj, True)
-        self.assertEqual(loge_entry.action, LogEntry.Action.CREATE, msg="Action is 'CREATE'")
+        self.assertEqual(loge_entry.action, ElasticSearchLogEntry.Action.CREATE, msg="Action is 'CREATE'")
         self.assertEqual(loge_entry.object_repr, str(self.obj), msg="Representation is equal")
         self.assertEqual(loge_entry.object_pk, str(self.obj.pk))
 
@@ -58,7 +58,7 @@ class BaseModelTest(BaseTest):
         self.assertEqual(self.mock_save.call_count, 3)
 
         # Check for log entries
-        self.assertEqual(log_entry.action, LogEntry.Action.UPDATE, msg="There is one log entry for 'UPDATE'")
+        self.assertEqual(log_entry.action, ElasticSearchLogEntry.Action.UPDATE, msg="There is one log entry for 'UPDATE'")
 
         self.assertEqual(log_entry.changes, [{"field": "boolean", "old": "False", "new": "True"}],
                          msg="The change is correctly logged")
@@ -76,7 +76,7 @@ class BaseModelTest(BaseTest):
         self.assertEqual(self.mock_save.call_count, 3)
 
         # Check for log entries
-        self.assertEqual(log_entry.action, LogEntry.Action.DELETE, msg="There is one log entry for 'DELETE'")
+        self.assertEqual(log_entry.action, ElasticSearchLogEntry.Action.DELETE, msg="There is one log entry for 'DELETE'")
 
     def test_recreate(self):
         self.sender.objects.all().delete()
@@ -160,7 +160,7 @@ class MiddlewareTest(TestCase):
         self.middleware.process_request(request)
 
         # Validate result
-        self.assertTrue(log_created.has_listeners(LogEntry))
+        self.assertTrue(log_created.has_listeners(ElasticSearchLogEntry))
 
         # Finalize transaction
         self.middleware.process_exception(request, None)
@@ -174,11 +174,11 @@ class MiddlewareTest(TestCase):
         # Run middleware
         self.middleware.process_request(request)
         self.assertTrue(
-            log_created.has_listeners(LogEntry))  # The signal should be present before trying to disconnect it.
+            log_created.has_listeners(ElasticSearchLogEntry))  # The signal should be present before trying to disconnect it.
         self.middleware.process_response(request, HttpResponse())
 
         # Validate result
-        self.assertFalse(log_created.has_listeners(LogEntry))
+        self.assertFalse(log_created.has_listeners(ElasticSearchLogEntry))
 
     def test_exception(self):
         """The signal will be disconnected when an exception is raised."""
@@ -189,11 +189,11 @@ class MiddlewareTest(TestCase):
         # Run middleware
         self.middleware.process_request(request)
         self.assertTrue(
-            log_created.has_listeners(LogEntry))  # The signal should be present before trying to disconnect it.
+            log_created.has_listeners(ElasticSearchLogEntry))  # The signal should be present before trying to disconnect it.
         self.middleware.process_exception(request, ValidationError("Test"))
 
         # Validate result
-        self.assertFalse(log_created.has_listeners(LogEntry))
+        self.assertFalse(log_created.has_listeners(ElasticSearchLogEntry))
 
 
 class SimpeIncludeModelTest(BaseTest, TransactionTestCase):
@@ -438,7 +438,7 @@ class AdminPanelTest(BaseTest, TransactionTestCase):
         self.obj = SimpleModel.objects.create(text='For admin logentry test')
 
     def test_auditlog_admin(self, search_mock, get_mock):
-        get_mock.return_value = log_create(LogEntry, self.obj, True)
+        get_mock.return_value = log_create(ElasticSearchLogEntry, self.obj, True)
         self.client.login(username=self.username, password=self.password)
         res = self.client.get("/admin/auditlog/logmodel/")
         self.assertEqual(res.status_code, 200)

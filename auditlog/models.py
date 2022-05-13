@@ -6,11 +6,13 @@ from django.conf import settings
 from django.contrib.contenttypes.fields import GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldDoesNotExist
-from django.db import models, DEFAULT_DB_ALIAS
+from django.db import models, DEFAULT_DB_ALIAS, transaction
 from django.db.models import QuerySet, Q, Field, JSONField
 from django.utils import formats, timezone
 from django.utils.encoding import smart_str
 from django.utils.translation import ugettext_lazy as _
+
+from auditlog.documents import log_created
 
 
 class LogEntryManager(models.Manager):
@@ -49,13 +51,15 @@ class LogEntryManager(models.Manager):
             if kwargs.get('action', None) is LogEntry.Action.CREATE:
                 if kwargs.get('object_id', None) is not None and self.filter(content_type=kwargs.get('content_type'),
                                                                              object_id=kwargs.get(
-                                                                                     'object_id')).exists():
+                                                                                 'object_id')).exists():
                     self.filter(content_type=kwargs.get('content_type'), object_id=kwargs.get('object_id')).delete()
                 else:
                     self.filter(content_type=kwargs.get('content_type'), object_pk=kwargs.get('object_pk', '')).delete()
             # save LogEntry to same database instance is using
             db = instance._state.db
-            return self.create(**kwargs) if db is None or db == '' else self.using(db).create(**kwargs)
+            log_entry = self.model(**kwargs) if db is None or db == '' else self.using(db).model(**kwargs)
+            transaction.on_commit(log_entry.save)
+            return log_entry
         return None
 
     def get_for_object(self, instance):
@@ -129,10 +133,10 @@ class LogEntryManager(models.Manager):
         """
         pk_field = instance._meta.pk.name
         pk = getattr(instance, pk_field, None)
-
         # Check to make sure that we got an pk not a model object.
         if isinstance(pk, models.Model):
             pk = self._get_pk_value(pk)
+        pk = instance._meta.pk.get_prep_value(pk)
         return pk
 
 
@@ -247,7 +251,9 @@ class LogEntry(models.Model):
             choices_dict = None
             if getattr(field, 'choices') and len(field.choices) > 0:
                 choices_dict = dict(field.choices)
-            if hasattr(field, 'base_field') and isinstance(field.base_field, Field) and getattr(field.base_field, 'choices') and len(field.base_field.choices) > 0:
+            if hasattr(field, 'base_field') and isinstance(field.base_field, Field) and getattr(field.base_field,
+                                                                                                'choices') and len(
+                field.base_field.choices) > 0:
                 choices_dict = dict(field.base_field.choices)
 
             if choices_dict:
@@ -291,6 +297,10 @@ class LogEntry(models.Model):
             verbose_name = model_fields['mapping_fields'].get(field.name, getattr(field, 'verbose_name', field.name))
             changes_display_dict[verbose_name] = values_display
         return changes_display_dict
+
+    def save(self, *args, **kwargs):
+        log_created.send(self.__class__, instance=self)
+        return super().save(*args, **kwargs)
 
 
 class AuditlogHistoryField(GenericRelation):

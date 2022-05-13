@@ -1,4 +1,7 @@
-import threading
+try:
+    from asgiref.local import Local
+except ImportError:
+    from threading import local as Local
 import time
 from functools import partial
 
@@ -6,9 +9,9 @@ from django.apps import apps
 from django.conf import settings
 from django.utils.deprecation import MiddlewareMixin
 
-from auditlog.documents import LogEntry, log_created
+from auditlog.documents import log_created
 
-threadlocal = threading.local()
+threadlocal = Local()
 
 
 class AuditlogMiddleware(MiddlewareMixin):
@@ -34,14 +37,14 @@ class AuditlogMiddleware(MiddlewareMixin):
 
         # Connect signal for automatic logging
         set_actor = partial(self.set_actor, request=request, signal_duid=threadlocal.auditlog['signal_duid'])
-        log_created.connect(set_actor, sender=LogEntry, dispatch_uid=threadlocal.auditlog['signal_duid'], weak=False)
+        log_created.connect(set_actor, dispatch_uid=threadlocal.auditlog['signal_duid'], weak=False)
 
     def process_response(self, request, response):
         """
         Disconnects the signal receiver to prevent it from staying active.
         """
         if hasattr(threadlocal, 'auditlog'):
-            log_created.disconnect(sender=LogEntry, dispatch_uid=threadlocal.auditlog['signal_duid'])
+            log_created.disconnect(dispatch_uid=threadlocal.auditlog['signal_duid'])
 
         return response
 
@@ -50,7 +53,7 @@ class AuditlogMiddleware(MiddlewareMixin):
         Disconnects the signal receiver to prevent it from staying active in case of an exception.
         """
         if hasattr(threadlocal, 'auditlog'):
-            log_created.disconnect(sender=LogEntry, dispatch_uid=threadlocal.auditlog['signal_duid'])
+            log_created.disconnect(dispatch_uid=threadlocal.auditlog['signal_duid'])
 
         return None
 
@@ -70,7 +73,7 @@ class AuditlogMiddleware(MiddlewareMixin):
                     auth_user_model = apps.get_model(app_label, model_name)
                 except ValueError:
                     auth_user_model = apps.get_model('auth', 'user')
-                if sender == LogEntry and isinstance(user, auth_user_model) and instance.actor_id is None:
+                if isinstance(user, auth_user_model) and instance.actor_id is None:
                     instance.actor_id = user._meta.pk.get_prep_value(user.pk)
                     instance.actor_email = user.email
                     instance.actor_first_name = user.first_name

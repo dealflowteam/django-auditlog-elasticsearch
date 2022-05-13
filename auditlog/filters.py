@@ -8,7 +8,7 @@ from django.forms import forms, SplitDateTimeField, CharField, ChoiceField
 from django.forms.utils import pretty_name
 from elasticsearch_dsl import Q
 
-from auditlog.documents import LogEntry
+from auditlog.documents import ElasticSearchLogEntry
 
 
 class SimpleInputFilter(SimpleListFilter):
@@ -140,7 +140,7 @@ class BaseChoiceFilter(SimpleInputFilter):
 class ActionChoiceFilter(BaseChoiceFilter):
     parameter_name = 'action'
     title = 'Action'
-    field_choices = LogEntry.Action.choices
+    field_choices = ElasticSearchLogEntry.Action.choices
 
 
 class ContentTypeChoiceFilter(BaseChoiceFilter):

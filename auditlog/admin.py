@@ -7,7 +7,7 @@ from django.urls import path
 
 from auditlog.filters import ActorInputFilter, DateTimeFilter, ChangesFilter, ActionChoiceFilter, \
     ContentTypeChoiceFilter
-from .documents import LogEntry
+from .documents import ElasticSearchLogEntry
 from .mixins import LogEntryAdminMixin
 from .utils.admin import get_headers, results, CustomChangeList, CustomPaginator
 
@@ -41,7 +41,7 @@ class DummyModelAdmin(LogEntryAdminMixin, admin.ModelAdmin):
         return False
 
     def get_queryset(self, request):
-        s = LogEntry.search()
+        s = ElasticSearchLogEntry.search()
         s = s.sort('-timestamp')
         return s
 
@@ -62,7 +62,7 @@ class DummyModelAdmin(LogEntryAdminMixin, admin.ModelAdmin):
 
     def detail_view(self, request, object_id):
         try:
-            obj = LogEntry.get(object_id)
+            obj = ElasticSearchLogEntry.get(object_id)
         except elasticsearch.exceptions.NotFoundError:
             raise Http404()
         context = {

@@ -8,7 +8,7 @@ from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from elasticsearch_dsl import Q
 
-from auditlog.documents import LogEntry
+from auditlog.documents import ElasticSearchLogEntry
 
 
 class LogEntryAdminMixin(object):
@@ -40,7 +40,7 @@ class LogEntryAdminMixin(object):
             return format_html(u'<a href="{}">{}</a>', link, obj.object_repr)
 
     def changes(self, obj):
-        if obj.action == LogEntry.Action.DELETE or not obj.changes:
+        if obj.action == ElasticSearchLogEntry.Action.DELETE or not obj.changes:
             return ''  # delete
         changes = obj.changes
         msg = '<table class="grp-table"><thead><tr><th>#</th><th>Field</th><th>From</th><th>To</th></tr></thead>'
@@ -73,7 +73,7 @@ class AuditlogAdminHistoryMixin(LogEntryAdminMixin):
         id_ = self.model._meta.pk.get_prep_value(kwargs['object_id'])
         instance = self.model.objects.get(pk=pk)
         content_type = ContentType.objects.get_for_model(instance)
-        s = LogEntry.search().query(
+        s = ElasticSearchLogEntry.search().query(
             Q('bool', must=[Q('bool', should=[Q('match', object_pk=str(instance.pk)),
                                               Q('match', object_id=id_)]),
                             Q('match', content_type_id=content_type.pk)])
