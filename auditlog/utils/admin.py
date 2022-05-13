@@ -54,7 +54,7 @@ class CustomPaginator(Paginator):
     def num_pages(self):
         """Return the total number of pages."""
         if self.count == 0 and not self.allow_empty_first_page:
-            return 0
+            return 1
         hits = max(1, self.count - self.orphans)
         # Elasticsearch has max offset 10000
         if hits > 10000:
@@ -147,9 +147,9 @@ class CustomChangeList:
         multi_page = result_count > self.model_admin.list_per_page
 
         try:
-            page_num = int(self.request.GET.get(PAGE_VAR, 0))
+            page_num = int(self.request.GET.get(PAGE_VAR, 1))
         except ValueError:
-            page_num = 0
+            page_num = 1
 
         show_all = ALL_VAR in self.request.GET
         # Get the list of objects to display on this page.

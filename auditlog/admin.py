@@ -18,7 +18,7 @@ class LogModel(models.Model):
         app_label = 'auditlog'
 
 
-class DummyModelAdmin(admin.ModelAdmin, LogEntryAdminMixin):
+class DummyModelAdmin(LogEntryAdminMixin, admin.ModelAdmin):
     list_fields = ['timestamp', 'action', 'content_type_model', 'object_repr', 'actor', 'changed_fields']
     filters = [ActorInputFilter, 'object_repr', ActionChoiceFilter, ('timestamp', DateTimeFilter),
                ChangesFilter, ContentTypeChoiceFilter]
