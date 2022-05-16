@@ -21,11 +21,10 @@ setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
     install_requires=[
-        'django-jsonfield>=1.0.0',
+        'django>=3.1.0',
         'python-dateutil>=2.6.0',
         'elasticsearch==7.12',
         'elasticsearch-dsl==7.3.0',
-
     ],
     zip_safe=False,
     classifiers=[
@@ -36,6 +35,7 @@ setup(
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.9',
         'License :: OSI Approved :: MIT License',
     ],
 )
