@@ -71,7 +71,7 @@ class AuditlogModelRegistry(object):
             return lambda cls: registrar(cls)
         else:
             # Otherwise, just register the model.
-            registrar(model)
+            return registrar(model)
 
     def contains(self, model: ModelBase) -> bool:
         """

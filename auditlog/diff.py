@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Model, NOT_PROVIDED, DateTimeField
@@ -65,7 +67,7 @@ def get_field_value(obj, field):
         if value is not None and settings.USE_TZ and not timezone.is_naive(value):
             value = timezone.make_naive(value, timezone=timezone.utc)
 
-    if not isinstance(value, (int, float, str)) and value is not None:
+    if not isinstance(value, (int, float, str, Decimal)) and value is not None:
         value = smart_str(value)
 
     return value

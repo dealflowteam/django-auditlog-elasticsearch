@@ -1,3 +1,4 @@
+from datetime import datetime
 from math import ceil
 from urllib.parse import urlencode
 
@@ -6,8 +7,10 @@ from django.contrib.admin.views.main import ALL_VAR, PAGE_VAR
 from django.core.paginator import InvalidPage, Paginator
 from django.forms.utils import pretty_name
 from django.urls import reverse
+from django.utils import dateformat
 from django.utils.functional import cached_property
 from django.utils.html import format_html
+from django.utils.timezone import localtime
 
 from auditlog.filters import SimpleInputFilter
 
@@ -26,6 +29,8 @@ def items_for_result(result, fields, opts):
     for field in fields:
 
         value = getattr(result, field)
+        if isinstance(value, datetime):
+            value = dateformat.format(localtime(value), 'Y-m-d H:i:s.u')
 
         if first:
             first = False
@@ -157,7 +162,7 @@ class CustomChangeList:
             result_list = queryset._clone()
         else:
             try:
-                result_list = paginator.page(page_num + 1).object_list
+                result_list = paginator.page(page_num).object_list
             except InvalidPage:
                 raise IncorrectLookupParameters
 
