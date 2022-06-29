@@ -6,6 +6,7 @@ from django.conf import settings
 from django.contrib.contenttypes.fields import GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldDoesNotExist
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models, DEFAULT_DB_ALIAS, transaction
 from django.db.models import QuerySet, Q, Field, JSONField
 from django.utils import formats, timezone
@@ -176,7 +177,8 @@ class LogEntry(models.Model):
     object_id = models.BigIntegerField(blank=True, db_index=True, null=True, verbose_name=_("object id"))
     object_repr = models.TextField(verbose_name=_("object representation"))
     action = models.PositiveSmallIntegerField(choices=Action.choices, verbose_name=_("action"))
-    changes = JSONField(blank=True, verbose_name=_("change message"))
+    changes = JSONField(blank=True, verbose_name=_("change message"), decoder=DjangoJSONEncoder,
+                        encoder=DjangoJSONEncoder)
     actor = models.ForeignKey(to=settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True,
                               related_name='+', verbose_name=_("actor"))
     remote_addr = models.GenericIPAddressField(blank=True, null=True, verbose_name=_("remote address"))
