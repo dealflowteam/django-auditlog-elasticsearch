@@ -136,6 +136,12 @@ class BaseChoiceFilter(SimpleInputFilter):
             )
         )
 
+    def queryset(self, request, queryset):
+        term = self.value()
+        if term is None:
+            return
+        return queryset.query('query_string', query=term, fields=[self.parameter_name])
+
 
 class ActionChoiceFilter(BaseChoiceFilter):
     parameter_name = 'action'
@@ -146,7 +152,7 @@ class ActionChoiceFilter(BaseChoiceFilter):
 class ContentTypeChoiceFilter(BaseChoiceFilter):
     parameter_name = 'content_type_id'
     title = 'Content type'
-    field_choices = ContentType.objects.values_list('id', 'model')
+    field_choices = ContentType.objects.values_list('id', 'model').order_by('model')
 
 
 class ChangesFilter(SimpleInputFilter):

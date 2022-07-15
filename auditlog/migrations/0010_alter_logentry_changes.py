@@ -14,6 +14,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='logentry',
             name='changes',
-            field=models.JSONField(blank=True, decoder=django.core.serializers.json.DjangoJSONEncoder, encoder=django.core.serializers.json.DjangoJSONEncoder, verbose_name='change message'),
+            field=models.JSONField(blank=True, encoder=django.core.serializers.json.DjangoJSONEncoder, verbose_name='change message'),
         ),
     ]
