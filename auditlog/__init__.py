@@ -1,3 +1,7 @@
-__version__ = '10.0a1'
+from pkg_resources import DistributionNotFound, get_distribution
 
-default_app_config = 'auditlog.apps.AuditlogConfig'
+try:
+    __version__ = get_distribution("django-auditlog").version
+except DistributionNotFound:
+    # package is not installed
+    pass
