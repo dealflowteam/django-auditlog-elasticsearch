@@ -27,7 +27,10 @@ class SimpleModel(models.Model):
 class HashIdModel(models.Model):
     id = HashidAutoField(primary_key=True)
     text = models.TextField(blank=True)
+    boolean = models.BooleanField(default=False)
+    integer = models.IntegerField(blank=True, null=True)
 
+    history = AuditlogHistoryField()
 
 class AltPrimaryKeyModel(models.Model):
     """

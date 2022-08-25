@@ -10,6 +10,7 @@ from elasticsearch_dsl import Q
 
 from auditlog.documents import LogEntry
 
+
 class ResourceTypeFilter(SimpleListFilter):
     title = "Resource Type"
     parameter_name = "resource_type"
@@ -18,6 +19,12 @@ class ResourceTypeFilter(SimpleListFilter):
         qs = model_admin.get_queryset(request)
         types = qs.values_list("content_type_id", "content_type__model")
         return list(types.order_by("content_type__model").distinct())
+
+    def queryset(self, request, queryset):
+        if self.value() is None:
+            return queryset
+        return queryset.filter(content_type_id=self.value())
+
 
 class SimpleInputFilter(SimpleListFilter):
     template = 'admin/input_filter.html'

@@ -39,7 +39,7 @@ def log_update(sender, instance, **kwargs):
 
             # Log an entry only if there are changes
             if changes:
-                LogEntry.object.log_create(
+                LogEntry.objects.log_create(
                     instance,
                     action=LogEntry.Action.UPDATE,
                     changes=changes,

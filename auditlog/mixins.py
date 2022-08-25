@@ -1,4 +1,4 @@
-from auditlog.documents import LogEntry
+from auditlog.models import LogEntry
 from django import urls as urlresolvers
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
@@ -10,6 +10,7 @@ from django.utils.safestring import mark_safe
 from django.utils.timezone import localtime
 from elasticsearch_dsl import Q
 
+MAX = 75
 
 class LogEntryAdminMixin:
     def created(self, obj):
@@ -49,7 +50,7 @@ class LogEntryAdminMixin:
     def msg_short(self, obj):
         if obj.action == LogEntry.Action.DELETE:
             return ""  # delete
-        changes = json.loads(obj.changes)
+        changes = obj.changes
         s = "" if len(changes) == 1 else "s"
         fields = ", ".join(changes.keys())
         if len(fields) > MAX:
@@ -74,7 +75,7 @@ class LogEntryAdminMixin:
         return mark_safe("".join(msg))
 
     def msg(self, obj):
-        changes = json.loads(obj.changes)
+        changes = obj.changes
 
         atom_changes = {}
         m2m_changes = {}

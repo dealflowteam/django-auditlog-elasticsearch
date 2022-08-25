@@ -1,9 +1,15 @@
 import elasticsearch
 from django.contrib import admin
+from django.http import Http404
+from django.shortcuts import render
+from django.urls import path
 
-from auditlog.filters import ResourceTypeFilter
+from auditlog.documents import LogEntry as ElasticLogEntry
+from auditlog.filters import ResourceTypeFilter, ActorInputFilter, DateTimeFilter, ActionChoiceFilter, ChangesFilter, \
+    ContentTypeChoiceFilter
 from auditlog.mixins import LogEntryAdminMixin
 from auditlog.models import LogEntry
+from auditlog.utils.admin import CustomPaginator, CustomChangeList, get_headers, results
 
 
 class LogEntryAdmin(admin.ModelAdmin, LogEntryAdminMixin):
@@ -30,26 +36,16 @@ class LogEntryAdmin(admin.ModelAdmin, LogEntryAdminMixin):
 
 
 admin.site.register(LogEntry, LogEntryAdmin)
-import elasticsearch
-from django.contrib import admin
-from django.db import models
-from django.http import Http404
-from django.shortcuts import render
-from django.urls import path
-
-from auditlog.filters import ActorInputFilter, DateTimeFilter, ChangesFilter, ActionChoiceFilter, \
-    ContentTypeChoiceFilter
-from .documents import LogEntry
-from .mixins import LogEntryAdminMixin
-from .utils.admin import get_headers, results, CustomChangeList, CustomPaginator
 
 
-class LogModel(models.Model):
+class ElasticLogEntryModel(LogEntry):
     class Meta:
+        proxy = True
         verbose_name_plural = 'Log Entries'
         app_label = 'auditlog'
 
 
+@admin.register(ElasticLogEntryModel)
 class DummyModelAdmin(admin.ModelAdmin, LogEntryAdminMixin):
     list_fields = ['timestamp', 'action', 'content_type_model', 'object_repr', 'actor', 'changed_fields']
     filters = [ActorInputFilter, 'object_repr', ActionChoiceFilter, ('timestamp', DateTimeFilter),
@@ -73,7 +69,7 @@ class DummyModelAdmin(admin.ModelAdmin, LogEntryAdminMixin):
         return False
 
     def get_queryset(self, request):
-        s = LogEntry.search()
+        s = ElasticLogEntry.search()
         s = s.sort('-timestamp')
         return s
 
@@ -94,7 +90,7 @@ class DummyModelAdmin(admin.ModelAdmin, LogEntryAdminMixin):
 
     def detail_view(self, request, object_id):
         try:
-            obj = LogEntry.get(object_id)
+            obj = ElasticLogEntry.get(object_id)
         except elasticsearch.exceptions.NotFoundError:
             raise Http404()
         context = {
@@ -116,6 +112,3 @@ class DummyModelAdmin(admin.ModelAdmin, LogEntryAdminMixin):
                 else:
                     fields[key].append((value, getattr(obj, value)))
         return fields
-
-
-admin.site.register(LogModel, DummyModelAdmin)

@@ -30,7 +30,7 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.getenv(
-            "TEST_DB_NAME", "auditlog" + os.environ.get("TOX_PARALLEL_ENV", "")
+            "TEST_DB_NAME", "auditlog1" + os.environ.get("TOX_PARALLEL_ENV", "")
         ),
         "USER": os.getenv("TEST_DB_USER", "postgres"),
         "PASSWORD": os.getenv("TEST_DB_PASS", ""),

@@ -15,6 +15,7 @@ from django.db.models import Q, QuerySet
 from django.utils import formats, timezone
 from django.utils.encoding import smart_str
 from django.utils.translation import gettext_lazy as _
+from hashid_field import Hashid
 
 from auditlog.diff import mask_str
 
@@ -37,7 +38,6 @@ class LogEntryManager(models.Manager):
         """
         changes = kwargs.get("changes", None)
         pk = self._get_pk_value(instance)
-
         if changes is not None:
             kwargs.setdefault(
                 "content_type", ContentType.objects.get_for_model(instance)
@@ -47,7 +47,8 @@ class LogEntryManager(models.Manager):
             kwargs.setdefault(
                 "serialized_data", self._get_serialized_data_or_none(instance)
             )
-
+            if isinstance(pk, Hashid):
+                kwargs.setdefault("object_id", pk.id)
             if isinstance(pk, int):
                 kwargs.setdefault("object_id", pk)
 
@@ -61,9 +62,9 @@ class LogEntryManager(models.Manager):
                 if (
                     kwargs.get("object_id", None) is not None
                     and self.filter(
-                        content_type=kwargs.get("content_type"),
-                        object_id=kwargs.get("object_id"),
-                    ).exists()
+                    content_type=kwargs.get("content_type"),
+                    object_id=kwargs.get("object_id"),
+                ).exists()
                 ):
                     self.filter(
                         content_type=kwargs.get("content_type"),
@@ -112,15 +113,14 @@ class LogEntryManager(models.Manager):
                 kwargs.setdefault("additional_data", get_additional_data())
 
             objects = [smart_str(instance) for instance in changed_queryset]
-            kwargs["changes"] = json.dumps(
-                {
-                    field_name: {
-                        "type": "m2m",
-                        "operation": operation,
-                        "objects": objects,
-                    }
+            kwargs["changes"] = {
+                field_name: {
+                    "type": "m2m",
+                    "operation": operation,
+                    "objects": objects,
                 }
-            )
+            }
+
             return self.create(**kwargs)
 
         return None
@@ -338,7 +338,7 @@ class LogEntry(models.Model):
     action = models.PositiveSmallIntegerField(
         choices=Action.choices, verbose_name=_("action"), db_index=True
     )
-    changes = JSONField(blank=True, verbose_name=_("change message"))
+    changes = models.JSONField(blank=True, verbose_name=_("change message"))
     actor = models.ForeignKey(
         to=settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -376,6 +376,13 @@ class LogEntry(models.Model):
             fstring = _("Logged {repr:s}")
 
         return fstring.format(repr=self.object_repr)
+
+    @property
+    def changes_dict(self):
+        """
+        :return: The changes recorded in this log entry as a dictionary object.
+        """
+        return self.changes
 
     @property
     def changes_str(self, colon=": ", arrow=" \u2192 ", separator="; "):

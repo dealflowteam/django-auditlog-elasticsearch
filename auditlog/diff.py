@@ -165,11 +165,11 @@ def model_instance_diff(old, new, fields_to_check=None):
                 )
             else:
                 diff[field.name] = (smart_str(old_value), smart_str(new_value))
-    diff = [{
-        'field': name,
-        'old': old_value,
-        'new': new_value
-    } for name,(old_value,new_value) in diff.items()]
+    # diff = [{
+    #     'field': name,
+    #     'old': old_value,
+    #     'new': new_value
+    # } for name,(old_value,new_value) in diff.items()]
 
     if len(diff) == 0:
         diff = None

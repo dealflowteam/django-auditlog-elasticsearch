@@ -44,12 +44,11 @@ from auditlog_tests.models import (
     SimpleMappingModel,
     SimpleMaskedModel,
     SimpleModel,
-    UUIDPrimaryKeyModel,
+    UUIDPrimaryKeyModel, HashIdModel,
 )
 
 
-class BaseModelTest(BaseTest):
-
+class SimpleModelTest(TestCase):
     def setUp(self):
         self.obj = self.make_object()
         super().setUp()
@@ -59,7 +58,8 @@ class BaseModelTest(BaseTest):
 
     def test_create(self):
         """Creation is logged correctly."""
-        self.assertEqual(self.mock_save.call_count, 1)
+        # Get the object to work with
+        obj = self.obj
 
         # Check for log entries
         self.assertEqual(obj.history.count(), 1, msg="There is one log entry")
@@ -93,15 +93,12 @@ class BaseModelTest(BaseTest):
 
     def update(self, obj):
         obj.boolean = True
-
-        log_entry = log_update(self.sender, obj)
-
         obj.save()
 
     def check_update_log_entry(self, obj, history):
-        self.assertJSONEqual(
+        self.assertEqual(
             history.changes,
-            '{"boolean": ["False", "True"]}',
+            {"boolean": ["False", "True"]},
             msg="The change is correctly logged",
         )
 
@@ -114,9 +111,9 @@ class BaseModelTest(BaseTest):
         obj.save(update_fields=["boolean"])
 
         # This implicitly asserts there is only one UPDATE change since the `.get` would fail otherwise.
-        self.assertJSONEqual(
+        self.assertEqual(
             obj.history.get(action=LogEntry.Action.UPDATE).changes,
-            '{"boolean": ["False", "True"]}',
+            {"boolean": ["False", "True"]},
             msg=(
                 "Object modifications that are not saved to DB are not logged "
                 "when using the `update_fields`."
@@ -147,9 +144,9 @@ class BaseModelTest(BaseTest):
         obj.integer = 1
         obj.boolean = True
         obj.save(update_fields=None)
-        self.assertJSONEqual(
+        self.assertEqual(
             obj.history.get(action=LogEntry.Action.UPDATE).changes,
-            '{"boolean": ["False", "True"], "integer": ["None", "1"]}',
+            {"boolean": ["False", "True"], "integer": ["None", "1"]},
             msg="The 2 fields changed are correctly logged",
         )
 
@@ -175,10 +172,6 @@ class BaseModelTest(BaseTest):
 
     def check_delete_log_entry(self, obj, history):
         pass
-        self.assertEqual(self.mock_save.call_count, 3)
-
-        # Check for log entries
-        self.assertEqual(log_entry.action, LogEntry.Action.DELETE, msg="There is one log entry for 'DELETE'")
 
     def test_recreate(self):
         self.obj.delete()
@@ -197,7 +190,7 @@ class BaseModelTest(BaseTest):
         log_entry = LogEntry.objects.log_create(
             instance,
             action=LogEntry.Action.CREATE,
-            changes=json.dumps(changes),
+            changes=changes,
         )
         self.assertEqual(
             log_entry._state.db, "default", msg=msg
@@ -241,29 +234,6 @@ class WithActorMixin:
     def check_create_log_entry(self, obj, log_entry):
         super().check_create_log_entry(obj, log_entry)
         self.assertEqual(log_entry.actor, self.user)
-        super().setUp()
-        self.sender = SimpleModel
-        self.obj = SimpleModel.objects.create(text='I am not difficult.')
-
-
-class HashIdModelTest(BaseModelTest, TransactionTestCase):
-    def setUp(self):
-        super().setUp()
-        self.sender = SimpleModel
-        self.obj = HashIdModel.objects.create(text='I am not difficult.')
-
-    def test_create(self):
-        self.assertEqual(self.mock_save.call_count, 1)
-        log_entry = log_create(self.sender, self.obj, True)
-        self.assertEqual(log_entry.object_pk, str(self.obj.pk))
-        self.assertEqual(log_entry.object_id, self.obj.pk.id)
-
-
-class AltPrimaryKeyModelTest(BaseModelTest, TransactionTestCase):
-    def setUp(self):
-        super().setUp()
-        self.sender = AltPrimaryKeyModel
-        self.obj = AltPrimaryKeyModel.objects.create(key=str(datetime.datetime.now()), text='I am strange.')
 
     def update(self, obj):
         with set_actor(self.user):
@@ -282,10 +252,8 @@ class AltPrimaryKeyModelTest(BaseModelTest, TransactionTestCase):
         self.assertEqual(log_entry.actor, self.user)
 
 
-class AltPrimaryKeyModelBase(BaseModelTest, TransactionTestCase):
+class AltPrimaryKeyModelBase(SimpleModelTest):
     def make_object(self):
-        super().setUp()
-        self.sender = UUIDPrimaryKeyModel
         return AltPrimaryKeyModel.objects.create(
             key=str(datetime.datetime.now()), text="I am strange."
         )
@@ -298,6 +266,14 @@ class AltPrimaryKeyModelTest(NoActorMixin, AltPrimaryKeyModelBase):
 class AltPrimaryKeyModelWithActorTest(WithActorMixin, AltPrimaryKeyModelBase):
     pass
 
+class HashIdModelTest(SimpleModelTest):
+    def make_object(self):
+        return HashIdModel.objects.create(text='I am not difficult.')
+
+    def check_create_log_entry(self,obj, history):
+        super().check_create_log_entry(obj, history)
+        self.assertEqual(history.object_pk, str(self.obj.pk))
+        self.assertEqual(history.object_id, self.obj.pk.id)
 
 class UUIDPrimaryKeyModelModelBase(SimpleModelTest):
     def make_object(self):
@@ -342,13 +318,12 @@ class ProxyModelWithActorTest(WithActorMixin, ProxyModelBase):
     pass
 
 
-class ManyRelatedModelTest(BaseTest, TransactionTestCase):
+class ManyRelatedModelTest(TestCase):
     """
     Test the behaviour of many-to-many relationships.
     """
 
     def setUp(self):
-        super().setUp()
         self.obj = ManyRelatedModel.objects.create()
         self.recursive = ManyRelatedModel.objects.create()
         self.related = ManyRelatedOtherModel.objects.create()
@@ -448,7 +423,7 @@ class MiddlewareTest(TestCase):
         self.assert_no_listeners()
 
     def test_request(self):
-        """The actor will be logged."""
+        """The actor will be logged when a user is logged in."""
         request = self.factory.get("/")
         request.user = self.user
 
@@ -488,7 +463,7 @@ class MiddlewareTest(TestCase):
                 )
 
 
-class SimpleIncludeModelTest(BaseTest, TransactionTestCase):
+class SimpleIncludeModelTest(TestCase):
     """Log only changes in include_fields"""
 
     def test_specified_save_fields_are_ignored_if_not_included(self):
@@ -506,9 +481,9 @@ class SimpleIncludeModelTest(BaseTest, TransactionTestCase):
         obj.text = "Newer text"
         obj.save(update_fields=["text", "label"])
 
-        self.assertJSONEqual(
+        self.assertEqual(
             obj.history.get(action=LogEntry.Action.UPDATE).changes,
-            '{"label": ["Initial label", "New label"]}',
+            {"label": ["Initial label", "New label"]},
             msg="Only the label was logged, regardless of multiple entries in `update_fields`",
         )
 
@@ -528,7 +503,7 @@ class SimpleIncludeModelTest(BaseTest, TransactionTestCase):
         self.assertEqual(sim.history.count(), 2, msg="There are two log entries")
 
 
-class SimpleExcludeModelTest(BaseTest, TransactionTestCase):
+class SimpleExcludeModelTest(TestCase):
     """Log only changes that are not in exclude_fields"""
 
     def test_specified_save_fields_are_excluded_normally(self):
@@ -558,7 +533,7 @@ class SimpleExcludeModelTest(BaseTest, TransactionTestCase):
         self.assertEqual(sem.history.count(), 2, msg="There are two log entries")
 
 
-class SimpleMappingModelTest(BaseTest, TransactionTestCase):
+class SimpleMappingModelTest(TestCase):
     """Diff displays fields as mapped field names where available through mapping_fields"""
 
     def test_register_mapping_fields(self):
@@ -612,7 +587,8 @@ class SimpeMaskedFieldsModelTest(TestCase):
         )
 
 
-        log_entry = log_create(SimpleMappingModel, smm, True)
+class AdditionalDataModelTest(TestCase):
+    """Log additional data if get_additional_data is defined in the model"""
 
     def test_model_without_additional_data(self):
         obj_wo_additional_data = SimpleModel.objects.create(
@@ -644,7 +620,8 @@ class SimpeMaskedFieldsModelTest(TestCase):
             msg="Related model's id is logged",
         )
 
-class DateTimeFieldModelTest(BaseTest, TransactionTestCase):
+
+class DateTimeFieldModelTest(TestCase):
     """Tests if DateTimeField changes are recognised correctly"""
 
     utc_plus_one = timezone.get_fixed_timezone(datetime.timedelta(hours=1))
@@ -667,7 +644,10 @@ class DateTimeFieldModelTest(BaseTest, TransactionTestCase):
         date = datetime.date(2017, 1, 10)
         time = datetime.time(12, 0)
         dtm = DateTimeFieldModel(
-            label="DateTimeField model", timestamp=timestamp, date=date, time=time,
+            label="DateTimeField model",
+            timestamp=timestamp,
+            date=date,
+            time=time,
                                  naive_dt=self.now,
         )
         dtm.save()
@@ -688,7 +668,10 @@ class DateTimeFieldModelTest(BaseTest, TransactionTestCase):
         date = datetime.date(2017, 1, 10)
         time = datetime.time(12, 0)
         dtm = DateTimeFieldModel(
-            label="DateTimeField model", timestamp=timestamp, date=date, time=time,
+            label="DateTimeField model",
+            timestamp=timestamp,
+            date=date,
+            time=time,
                                  naive_dt=self.now,
         )
         dtm.save()
@@ -707,7 +690,10 @@ class DateTimeFieldModelTest(BaseTest, TransactionTestCase):
         date = datetime.date(2017, 1, 10)
         time = datetime.time(12, 0)
         dtm = DateTimeFieldModel(
-            label="DateTimeField model", timestamp=timestamp, date=date, time=time,
+            label="DateTimeField model",
+            timestamp=timestamp,
+            date=date,
+            time=time,
                                  naive_dt=self.now,
         )
         dtm.save()
@@ -726,7 +712,10 @@ class DateTimeFieldModelTest(BaseTest, TransactionTestCase):
         date = datetime.date(2017, 1, 10)
         time = datetime.time(12, 0)
         dtm = DateTimeFieldModel(
-            label="DateTimeField model", timestamp=timestamp, date=date, time=time,
+            label="DateTimeField model",
+            timestamp=timestamp,
+            date=date,
+            time=time,
                                  naive_dt=self.now,
         )
         dtm.save()
@@ -745,7 +734,10 @@ class DateTimeFieldModelTest(BaseTest, TransactionTestCase):
         date = datetime.date(2017, 1, 10)
         time = datetime.time(12, 0)
         dtm = DateTimeFieldModel(
-            label="DateTimeField model", timestamp=timestamp, date=date, time=time,
+            label="DateTimeField model",
+            timestamp=timestamp,
+            date=date,
+            time=time,
                                  naive_dt=self.now,
         )
         dtm.save()
@@ -764,7 +756,10 @@ class DateTimeFieldModelTest(BaseTest, TransactionTestCase):
         date = datetime.date(2017, 1, 10)
         time = datetime.time(12, 0)
         dtm = DateTimeFieldModel(
-            label="DateTimeField model", timestamp=timestamp, date=date, time=time,
+            label="DateTimeField model",
+            timestamp=timestamp,
+            date=date,
+            time=time,
                                  naive_dt=self.now,
         )
         dtm.save()
@@ -914,7 +909,10 @@ class DateTimeFieldModelTest(BaseTest, TransactionTestCase):
         date = datetime.date(2017, 1, 10)
         time = datetime.time(12, 0)
         dtm = DateTimeFieldModel(
-            label="DateTimeField model", timestamp=timestamp, date=date, time=time,
+            label="DateTimeField model",
+            timestamp=timestamp,
+            date=date,
+            time=time,
                                  naive_dt=self.now,
         )
         dtm.save()
@@ -924,14 +922,12 @@ class DateTimeFieldModelTest(BaseTest, TransactionTestCase):
         dtm.save()
 
 
-class UnregisterTest(BaseTest, TransactionTestCase):
+class UnregisterTest(TestCase):
     def setUp(self):
-        super().setUp()
         auditlog.unregister(SimpleModel)
         self.obj = SimpleModel.objects.create(text="No history")
 
     def tearDown(self):
-        super().tearDown()
         # Re-register for future tests
         auditlog.register(SimpleModel)
 
@@ -1016,7 +1012,7 @@ class RegisterModelSettingsTest(TestCase):
 
         self.assertTrue(self.test_auditlog.contains(SimpleExcludeModel))
         self.assertTrue(self.test_auditlog.contains(ChoicesFieldModel))
-        self.assertEqual(len(self.test_auditlog.get_models()), 23)
+        self.assertEqual(len(self.test_auditlog.get_models()), 24)
 
     def test_register_models_register_model_with_attrs(self):
         self.test_auditlog._register_models(
@@ -1272,10 +1268,8 @@ class PostgresArrayFieldModelTest(TestCase):
             msg="The human readable text 'Green' is displayed.",
         )
 
-@mock.patch('auditlog.documents.LogEntry.get')
-@mock.patch('auditlog.documents.LogEntry.search')
-class AdminPanelTest(BaseTest, TransactionTestCase):
 
+class AdminPanelTest(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
             username="test_admin", is_staff=True, is_superuser=True, is_active=True
@@ -1312,14 +1306,116 @@ class AdminPanelTest(BaseTest, TransactionTestCase):
                 self.assertEqual(self.admin.created(log_entry), timestamp)
 
 
+class DiffMsgTest(TestCase):
+    def setUp(self):
+        super().setUp()
+        self.site = AdminSite()
+        self.admin = LogEntryAdmin(LogEntry, self.site)
 
-class NoDeleteHistoryTest(BaseTest, TransactionTestCase):
+    def _create_log_entry(self, action, changes):
+        return LogEntry.objects.log_create(
+            SimpleModel.objects.create(),  # doesn't affect anything
+            action=action,
+            changes=changes,
+        )
+
+    def test_changes_msg_delete(self):
+        log_entry = self._create_log_entry(
+            LogEntry.Action.DELETE,
+            {"field one": ["value before deletion", None], "field two": [11, None]},
+        )
+
+        self.assertEqual(self.admin.msg_short(log_entry), "")
+        self.assertEqual(
+            self.admin.msg(log_entry),
+            (
+                "<table>"
+                "<tr><th>#</th><th>Field</th><th>From</th><th>To</th></tr>"
+                "<tr><td>1</td><td>field one</td><td>value before deletion</td><td>None</td></tr>"
+                "<tr><td>2</td><td>field two</td><td>11</td><td>None</td></tr>"
+                "</table>"
+            ),
+        )
+
+    def test_changes_msg_create(self):
+        log_entry = self._create_log_entry(
+            LogEntry.Action.CREATE,
+            {
+                "field two": [None, 11],
+                "field one": [None, "a value"],
+            },
+        )
+
+        self.assertEqual(
+            self.admin.msg_short(log_entry), "2 changes: field two, field one"
+        )
+        self.assertEqual(
+            self.admin.msg(log_entry),
+            (
+                "<table>"
+                "<tr><th>#</th><th>Field</th><th>From</th><th>To</th></tr>"
+                "<tr><td>1</td><td>field one</td><td>None</td><td>a value</td></tr>"
+                "<tr><td>2</td><td>field two</td><td>None</td><td>11</td></tr>"
+                "</table>"
+            ),
+        )
+
+    def test_changes_msg_update(self):
+        log_entry = self._create_log_entry(
+            LogEntry.Action.UPDATE,
+            {
+                "field two": [11, 42],
+                "field one": ["old value of field one", "new value of field one"],
+            },
+        )
+
+        self.assertEqual(
+            self.admin.msg_short(log_entry), "2 changes: field two, field one"
+        )
+        self.assertEqual(
+            self.admin.msg(log_entry),
+            (
+                "<table>"
+                "<tr><th>#</th><th>Field</th><th>From</th><th>To</th></tr>"
+                "<tr><td>1</td><td>field one</td><td>old value of field one</td>"
+                "<td>new value of field one</td></tr>"
+                "<tr><td>2</td><td>field two</td><td>11</td><td>42</td></tr>"
+                "</table>"
+            ),
+        )
+
+    def test_changes_msg_m2m(self):
+        log_entry = self._create_log_entry(
+            LogEntry.Action.UPDATE,
+            {  # mimicking the format used by log_m2m_changes
+                "some_m2m_field": {
+                    "type": "m2m",
+                    "operation": "add",
+                    "objects": ["Example User (user 1)", "Illustration (user 42)"],
+                },
+            },
+        )
+
+        self.assertEqual(self.admin.msg_short(log_entry), "1 change: some_m2m_field")
+        self.assertEqual(
+            self.admin.msg(log_entry),
+            (
+                "<table>"
+                "<tr><th>#</th><th>Relationship</th><th>Action</th><th>Objects</th></tr>"
+                "<tr><td>1</td><td>some_m2m_field</td><td>add</td><td>Example User (user 1)"
+                "<br>Illustration (user 42)</td></tr>"
+                "</table>"
+            ),
+        )
+
+
+class NoDeleteHistoryTest(TestCase):
     def test_delete_related(self):
         instance = SimpleModel.objects.create(integer=1)
-        self.assertEqual(self.mock_save.call_count, 1)
+        assert LogEntry.objects.all().count() == 1
         instance.integer = 2
         instance.save()
-        self.assertEqual(self.mock_save.call_count, 2)
+        assert LogEntry.objects.all().count() == 2
 
         instance.delete()
         entries = LogEntry.objects.order_by("id")
@@ -1330,10 +1426,10 @@ class NoDeleteHistoryTest(BaseTest, TransactionTestCase):
 
     def test_no_delete_related(self):
         instance = NoDeleteHistoryModel.objects.create(integer=1)
-        self.assertEqual(self.mock_save.call_count, 1)
+        self.assertEqual(LogEntry.objects.all().count(), 1)
         instance.integer = 2
         instance.save()
-        self.assertEqual(self.mock_save.call_count, 2)
+        self.assertEqual(LogEntry.objects.all().count(), 2)
 
         instance.delete()
         entries = LogEntry.objects.order_by("id")
@@ -1368,9 +1464,9 @@ class JSONModelTest(TestCase):
 
         history = obj.history.get(action=LogEntry.Action.UPDATE)
 
-        self.assertJSONEqual(
+        self.assertEqual(
             history.changes,
-            '{"json": ["{}", "{\'quantity\': \'1\'}"]}',
+            {"json": ["{}", "{\'quantity\': \'1\'}"]},
             msg="The change is correctly logged",
         )
 
@@ -1631,7 +1727,7 @@ class TestModelSerialization(TestCase):
         )
         self.assertDictEqual(
             log.changes_dict,
-            {"this": ["None", "this should be there"], "id": ["None", "1"]},
+            {"this": ["None", "this should be there"], "id": ["None", str(instance.id)]},
         )
 
     def test_serialize_related(self):
