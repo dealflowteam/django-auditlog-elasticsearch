@@ -1,9 +1,15 @@
-import json
-
-from django.db import transaction
+from django.conf import settings
 
 from auditlog.diff import model_instance_diff
+from auditlog.models import ElasticSearchLogEntry
 from auditlog.models import LogEntry
+
+
+def get_backend():
+    if getattr(settings, 'AUDITLOG_USE_ELASTIC_SEARCH', True):
+        return ElasticSearchLogEntry
+    else:
+        return LogEntry.objects
 
 
 def log_create(sender, instance, created, **kwargs):

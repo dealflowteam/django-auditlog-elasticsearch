@@ -69,7 +69,7 @@ class SimpleModelTest(TestCase):
 
     def check_create_log_entry(self, obj, history):
         self.assertEqual(
-            history.action, LogEntry.Action.CREATE, msg="Action is 'CREATE'"
+            history.action, ElasticSearchLogEntry.Action.CREATE, msg="Action is 'CREATE'"
         )
         self.assertEqual(history.object_repr, str(obj), msg="Representation is equal")
 

@@ -59,18 +59,17 @@ def get_field_value(obj, field):
     :rtype: str
     """
     try:
-        if isinstance(field, DateTimeField):
-            # DateTimeFields are timezone-aware, so we need to convert the field
-            # to its naive form before we can accurately compare them for changes.
-            value = field.to_python(getattr(obj, field.name, None))
-            if value is not None and settings.USE_TZ and not timezone.is_naive(value):
-                value = timezone.make_naive(value, timezone=timezone.utc)
-        elif isinstance(field, JSONField):
-            value = field.to_python(getattr(obj, field.name, None))
-        else:
-            value = smart_str(getattr(obj, field.name, None))
+        value = getattr(obj, field.name, None)
     except ObjectDoesNotExist:
         value = field.default if field.default is not NOT_PROVIDED else None
+    if isinstance(field, DateTimeField):
+        # DateTimeFields are timezone-aware, so we need to convert the field
+        # to its naive form before we can accurately compare them for changes.
+        value = field.to_python(getattr(obj, field.name, None))
+        if value is not None and settings.USE_TZ and not timezone.is_naive(value):
+            value = timezone.make_naive(value, timezone=timezone.utc)
+
+    value = smart_str(value, strings_only=True)
 
     return value
 

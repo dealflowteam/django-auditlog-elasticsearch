@@ -8,7 +8,7 @@ from django.forms import forms, SplitDateTimeField, CharField, ChoiceField
 from django.forms.utils import pretty_name
 from elasticsearch_dsl import Q
 
-from auditlog.documents import LogEntry
+from auditlog.documents import ElasticSearchLogEntry
 
 
 class ResourceTypeFilter(SimpleListFilter):
@@ -151,17 +151,23 @@ class BaseChoiceFilter(SimpleInputFilter):
             )
         )
 
+    def queryset(self, request, queryset):
+        term = self.value()
+        if term is None:
+            return
+        return queryset.query('query_string', query=term, fields=[self.parameter_name])
+
 
 class ActionChoiceFilter(BaseChoiceFilter):
     parameter_name = 'action'
     title = 'Action'
-    field_choices = LogEntry.Action.choices
+    field_choices = ElasticSearchLogEntry.Action.choices
 
 
 class ContentTypeChoiceFilter(BaseChoiceFilter):
     parameter_name = 'content_type_id'
     title = 'Content type'
-    field_choices = ContentType.objects.values_list('id', 'model')
+    field_choices = ContentType.objects.values_list('id', 'model').order_by('model')
 
 
 class ChangesFilter(SimpleInputFilter):

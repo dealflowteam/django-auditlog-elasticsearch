@@ -17,7 +17,7 @@
                 <tbody>
                     {% for log_entry in log_entry_list %}
                         <tr>
-                            <th scope="grp-row">{{ log_entry.timestamp|date:_("DATETIME_FORMAT") }}</th>
+                            <th scope="grp-row">{{ log_entry.timestamp|date:"Y-m-d H:i:s.u" }}</th>
                             <td>{{ log_entry.user_link }}</td>
                             <td>{{ log_entry.action }}</td>
                             <td>{{ log_entry.log_link }}</td>

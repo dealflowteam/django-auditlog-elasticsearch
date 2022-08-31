@@ -5,10 +5,13 @@ from django.contrib.contenttypes.models import ContentType
 from django.shortcuts import render
 from django.urls import path, reverse
 from django.urls.exceptions import NoReverseMatch
+from django.utils import dateformat
 from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from django.utils.timezone import localtime
 from elasticsearch_dsl import Q
+
+from auditlog.documents import ElasticSearchLogEntry
 
 MAX = 75
 
@@ -61,7 +64,7 @@ class LogEntryAdminMixin:
     msg_short.short_description = "Changes"
 
     def changes(self, obj):
-        if obj.action == LogEntry.Action.DELETE or not obj.changes:
+        if obj.action == ElasticSearchLogEntry.Action.DELETE or not obj.changes:
             return ''  # delete
         changes = obj.changes
         msg = '<table class="grp-table"><thead><tr><th>#</th><th>Field</th><th>From</th><th>To</th></tr></thead>'
@@ -155,21 +158,23 @@ class AuditlogAdminHistoryMixin(LogEntryAdminMixin):
         id_ = self.model._meta.pk.get_prep_value(kwargs['object_id'])
         instance = self.model.objects.get(pk=pk)
         content_type = ContentType.objects.get_for_model(instance)
-        s = LogEntry.search().query(
+        s = ElasticSearchLogEntry.search().query(
             Q('bool', must=[Q('bool', should=[Q('match', object_pk=str(instance.pk)),
                                               Q('match', object_id=id_)]),
                             Q('match', content_type_id=content_type.pk)])
-        ).sort('timestamp')
+        ).sort('-timestamp')
 
-        for entry in s:
-            entry.user_link = self.user(entry)
-            link = reverse('admin:auditlog_logmodel_change', kwargs={'object_id': entry.meta.id})
-            entry.log_link = format_html(u'<a href="{}">Log entry</a>', link)
+        def entries():
+            for entry in s[:s.count()]:
+                entry.user_link = self.user(entry)
+                link = reverse('admin:auditlog_logmodel_change', kwargs={'object_id': entry.meta.id})
+                entry.log_link = format_html(u'<a href="{}">Log entry</a>', link)
+                yield entry
 
         context = {
             'title': f'Change history: {instance}',
             'opts': self.model._meta,
-            'log_entry_list': s
+            'log_entry_list': entries()
         }
         return render(request, 'admin/auditlog_history.html', context)
 

@@ -1,13 +1,13 @@
 from django.core.management import BaseCommand
 from elasticsearch_dsl import connections
 
-from auditlog.documents import LogEntry, Change
+from auditlog.documents import ElasticSearchLogEntry, Change
 from auditlog.models import LogEntry as LogEntry_db
 
 
 class Command(BaseCommand):
     def handle(self, *args, **options):
-        LogEntry.init()
+        ElasticSearchLogEntry.init()
         count = LogEntry_db.objects.count()
         step = 10000
         last = 0
@@ -15,7 +15,7 @@ class Command(BaseCommand):
             entries = []
             for entry_db in LogEntry_db.objects.all()[i:last+step]:
                 last += step
-                entry = LogEntry(
+                entry = ElasticSearchLogEntry(
                     meta={'id': entry_db.pk},
                     action=['create', 'update', 'delete'][entry_db.action],
                     content_type_id=entry_db.content_type.pk,
@@ -39,5 +39,5 @@ class Command(BaseCommand):
                     ]
                 entries.append(entry)
 
-            LogEntry.bulk(connections.get_connection(), entries)
+            ElasticSearchLogEntry.bulk(connections.get_connection(), entries)
             print(f'Uploaded {i} logs')

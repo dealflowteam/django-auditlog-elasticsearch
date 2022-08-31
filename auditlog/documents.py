@@ -2,7 +2,7 @@ import logging
 
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
-from django.db import models
+from django.db import models, transaction
 from django.dispatch import Signal
 from django.utils import timezone
 from django.utils.encoding import smart_str
@@ -11,7 +11,6 @@ from elasticsearch_dsl import Document, connections, Keyword, Date, Nested, Inne
 
 # Define a default Elasticsearch client
 connections.create_connection(hosts=[settings.ELASTICSEARCH_HOST])
-
 
 MAX = 75
 
@@ -25,8 +24,7 @@ class Change(InnerDoc):
 log_created = Signal()
 
 
-class LogEntry(Document):
-
+class ElasticSearchLogEntry(Document):
     class Action:
         CREATE = 'create'
         UPDATE = 'update'
@@ -72,7 +70,7 @@ class LogEntry(Document):
 
     @property
     def changed_fields(self):
-        if self.action == LogEntry.Action.DELETE:
+        if self.action == ElasticSearchLogEntry.Action.DELETE:
             return ''  # delete
         changes = self.changes
         s = '' if len(changes) == 1 else 's'
@@ -109,11 +107,11 @@ class LogEntry(Document):
         :type instance: Model
         :param kwargs: Field overrides for the :py:class:`LogEntry` object.
         :return: The new log entry or `None` if there were no changes.
-        :rtype: LogEntry
+        :rtype: ElasticSearchLogEntry
         """
         changes = kwargs.get('changes', None)
         pk = cls._get_pk_value(instance)
-
+        kwargs['action'] = ["create", 'update', 'delete'][kwargs['action']]
         if changes is not None:
             content_type = ContentType.objects.get_for_model(instance)
             kwargs.setdefault('content_type_id', content_type.id)
@@ -127,6 +125,7 @@ class LogEntry(Document):
             if isinstance(id_, int):
                 kwargs.setdefault('object_id', id_)
             log_entry = cls(**kwargs)
+            transaction.on_commit(log_entry.save)
             return log_entry
         return None
 

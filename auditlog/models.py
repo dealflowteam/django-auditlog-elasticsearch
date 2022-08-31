@@ -10,14 +10,16 @@ from django.contrib.contenttypes.fields import GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.core import serializers
 from django.core.exceptions import FieldDoesNotExist
-from django.db import DEFAULT_DB_ALIAS, models
-from django.db.models import Q, QuerySet
+from django.core.serializers.json import DjangoJSONEncoder
+from django.db import models, DEFAULT_DB_ALIAS, transaction
+from django.db.models import QuerySet, Q
 from django.utils import formats, timezone
 from django.utils.encoding import smart_str
 from django.utils.translation import gettext_lazy as _
 from hashid_field import Hashid
 
 from auditlog.diff import mask_str
+from auditlog.documents import log_created
 
 
 class LogEntryManager(models.Manager):
@@ -75,7 +77,11 @@ class LogEntryManager(models.Manager):
                         content_type=kwargs.get("content_type"),
                         object_pk=kwargs.get("object_pk", ""),
                     ).delete()
-            return self.create(**kwargs)
+            # save LogEntry to same database instance is using
+            db = instance._state.db
+            log_entry = self.model(**kwargs) if db is None or db == '' else self.using(db).model(**kwargs)
+            transaction.on_commit(log_entry.save)
+            return log_entry
         return None
 
     def log_m2m_changes(
@@ -210,10 +216,10 @@ class LogEntryManager(models.Manager):
         """
         pk_field = instance._meta.pk.name
         pk = getattr(instance, pk_field, None)
-
         # Check to make sure that we got an pk not a model object.
         if isinstance(pk, models.Model):
             pk = self._get_pk_value(pk)
+        pk = instance._meta.pk.get_prep_value(pk)
         return pk
 
     def _get_serialized_data_or_none(self, instance):
@@ -338,7 +344,7 @@ class LogEntry(models.Model):
     action = models.PositiveSmallIntegerField(
         choices=Action.choices, verbose_name=_("action"), db_index=True
     )
-    changes = models.JSONField(blank=True, verbose_name=_("change message"))
+    changes = models.JSONField(blank=True, verbose_name=_("change message"), encoder=DjangoJSONEncoder)
     actor = models.ForeignKey(
         to=settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -433,7 +439,8 @@ class LogEntry(models.Model):
             choices_dict = None
             if getattr(field, "choices", []):
                 choices_dict = dict(field.choices)
-            if getattr(getattr(field, "base_field", None), "choices", []):
+            if getattr(getattr(
+                field, "base_field", None), "choices", []):
                 choices_dict = dict(field.base_field.choices)
 
             if choices_dict:
@@ -481,6 +488,10 @@ class LogEntry(models.Model):
             )
             changes_display_dict[verbose_name] = values_display
         return changes_display_dict
+
+    def save(self, *args, **kwargs):
+        log_created.send(self.__class__, instance=self)
+        return super().save(*args, **kwargs)
 
 
 class AuditlogHistoryField(GenericRelation):
