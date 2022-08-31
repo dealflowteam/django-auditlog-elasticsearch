@@ -6,20 +6,34 @@ from typing import Any, Dict, List
 from dateutil import parser
 from dateutil.tz import gettz
 from django.conf import settings
-from django.contrib.contenttypes.fields import GenericRelation
+from django.contrib.contenttypes.fields import GenericRelation, GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core import serializers
 from django.core.exceptions import FieldDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models, DEFAULT_DB_ALIAS, transaction
-from django.db.models import QuerySet, Q
+from django.db.models import QuerySet, Q, IntegerChoices
+from django.db.models.signals import pre_save
 from django.utils import formats, timezone
 from django.utils.encoding import smart_str
 from django.utils.translation import gettext_lazy as _
-from hashid_field import Hashid
 
 from auditlog.diff import mask_str
-from auditlog.documents import log_created
+
+
+def get_backend():
+    return getattr(settings, 'AUDITLOG_BACKEND', 'db')
+
+
+def get_int_id(pk):
+    try:
+        from hashid_field import Hashid
+    except ImportError:
+        pass
+    else:
+        if isinstance(pk, Hashid):
+            return pk.id
+    return pk
 
 
 class LogEntryManager(models.Manager):
@@ -44,13 +58,12 @@ class LogEntryManager(models.Manager):
             kwargs.setdefault(
                 "content_type", ContentType.objects.get_for_model(instance)
             )
-            kwargs.setdefault("object_pk", pk)
+            kwargs.setdefault("object_pk", str(pk))
             kwargs.setdefault("object_repr", smart_str(instance))
             kwargs.setdefault(
                 "serialized_data", self._get_serialized_data_or_none(instance)
             )
-            if isinstance(pk, Hashid):
-                kwargs.setdefault("object_id", pk.id)
+            pk = get_int_id(pk)
             if isinstance(pk, int):
                 kwargs.setdefault("object_id", pk)
 
@@ -80,7 +93,10 @@ class LogEntryManager(models.Manager):
             # save LogEntry to same database instance is using
             db = instance._state.db
             log_entry = self.model(**kwargs) if db is None or db == '' else self.using(db).model(**kwargs)
-            transaction.on_commit(log_entry.save)
+            if getattr(settings, 'AUDITLOG_ON_COMMIT', False):
+                transaction.on_commit(log_entry.save)
+            else:
+                log_entry.save()
             return log_entry
         return None
 
@@ -107,10 +123,11 @@ class LogEntryManager(models.Manager):
             kwargs.setdefault(
                 "content_type", ContentType.objects.get_for_model(instance)
             )
-            kwargs.setdefault("object_pk", pk)
+            kwargs.setdefault("object_pk", str(pk))
             kwargs.setdefault("object_repr", smart_str(instance))
             kwargs.setdefault("action", LogEntry.Action.UPDATE)
 
+            pk = get_int_id(pk)
             if isinstance(pk, int):
                 kwargs.setdefault("object_id", pk)
 
@@ -219,7 +236,6 @@ class LogEntryManager(models.Manager):
         # Check to make sure that we got an pk not a model object.
         if isinstance(pk, models.Model):
             pk = self._get_pk_value(pk)
-        pk = instance._meta.pk.get_prep_value(pk)
         return pk
 
     def _get_serialized_data_or_none(self, instance):
@@ -307,7 +323,7 @@ class LogEntry(models.Model):
     instances is not recommended (and it should not be necessary).
     """
 
-    class Action:
+    class Action(IntegerChoices):
         """
         The actions that Auditlog distinguishes: creating, updating and deleting objects. Viewing objects
         is not logged. The values of the actions are numeric, a higher integer value means a more intrusive
@@ -317,15 +333,9 @@ class LogEntry(models.Model):
         The valid actions are :py:attr:`Action.CREATE`, :py:attr:`Action.UPDATE` and :py:attr:`Action.DELETE`.
         """
 
-        CREATE = 0
-        UPDATE = 1
-        DELETE = 2
-
-        choices = (
-            (CREATE, _("create")),
-            (UPDATE, _("update")),
-            (DELETE, _("delete")),
-        )
+        CREATE = 0, _("create")
+        UPDATE = 1, _("update")
+        DELETE = 2, _("delete")
 
     content_type = models.ForeignKey(
         to="contenttypes.ContentType",
@@ -357,7 +367,7 @@ class LogEntry(models.Model):
         blank=True, null=True, verbose_name=_("remote address")
     )
     timestamp = models.DateTimeField(
-        db_index=True, auto_now_add=True, verbose_name=_("timestamp")
+        db_index=True, default=timezone.now, verbose_name=_("timestamp")
     )
     additional_data = models.JSONField(
         blank=True, null=True, verbose_name=_("additional data")
@@ -490,8 +500,21 @@ class LogEntry(models.Model):
         return changes_display_dict
 
     def save(self, *args, **kwargs):
-        log_created.send(self.__class__, instance=self)
-        return super().save(*args, **kwargs)
+        backend = get_backend()
+        if backend == 'db':
+            return super().save(*args, **kwargs)
+        else:
+            pre_save.send(
+                sender=self.__class__, instance=self, raw=False, using=None,
+                update_fields=None,
+            )
+            if backend == 'celery':
+                data = {f: v for f, v in self.__dict__.items() if f not in ['_state']}
+                from auditlog.tasks import save_log_entries
+                save_log_entries.delay(**data)
+            else:
+                from .documents import ElasticSearchLogEntry
+                ElasticSearchLogEntry.create_from_log_entry(self)
 
 
 class AuditlogHistoryField(GenericRelation):

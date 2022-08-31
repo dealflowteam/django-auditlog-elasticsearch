@@ -6,9 +6,6 @@ from django.contrib.admin.widgets import AdminSplitDateTime, AdminTextInputWidge
 from django.contrib.contenttypes.models import ContentType
 from django.forms import forms, SplitDateTimeField, CharField, ChoiceField
 from django.forms.utils import pretty_name
-from elasticsearch_dsl import Q
-
-from auditlog.documents import ElasticSearchLogEntry
 
 
 class ResourceTypeFilter(SimpleListFilter):
@@ -82,6 +79,7 @@ class ActorInputFilter(SimpleInputFilter):
     title = 'Actor'
 
     def queryset(self, request, queryset):
+        from elasticsearch_dsl import Q
         if self.form.is_valid():
             term = self.value()
             if term is None:
@@ -161,7 +159,11 @@ class BaseChoiceFilter(SimpleInputFilter):
 class ActionChoiceFilter(BaseChoiceFilter):
     parameter_name = 'action'
     title = 'Action'
-    field_choices = ElasticSearchLogEntry.Action.choices
+
+    @property
+    def field_choices(self):
+        from auditlog.documents import ElasticSearchLogEntry
+        return ElasticSearchLogEntry.Action.choices
 
 
 class ContentTypeChoiceFilter(BaseChoiceFilter):
@@ -215,6 +217,7 @@ class ChangesFilter(SimpleInputFilter):
         return None
 
     def _make_query_filter(self, validated_data):
+        from elasticsearch_dsl import Q
         changes_field = validated_data.get(self.lookup_kwarg_field, None)
         changes_new = validated_data.get(self.lookup_kwarg_new, None)
         changes_old = validated_data.get(self.lookup_kwarg_old, None)

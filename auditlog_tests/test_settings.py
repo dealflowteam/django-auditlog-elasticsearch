@@ -30,7 +30,7 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.getenv(
-            "TEST_DB_NAME", "auditlog1" + os.environ.get("TOX_PARALLEL_ENV", "")
+            "TEST_DB_NAME", "auditlog" + os.environ.get("TOX_PARALLEL_ENV", "")
         ),
         "USER": os.getenv("TEST_DB_USER", "postgres"),
         "PASSWORD": os.getenv("TEST_DB_PASS", ""),
@@ -62,7 +62,12 @@ USE_TZ = True
 
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 
-
 AUDITLOG_INDEX_NAME = 'test-logs'
-
+BROKER_URL = os.getenv('BROKER_URL', 'redis://localhost:8370/0')
 ELASTICSEARCH_HOST = 'localhost'
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_RESULT_BACKEND = BROKER_URL
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_IMPORTS = ("auditlog.tasks",)

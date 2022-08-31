@@ -1,5 +1,4 @@
 import contextlib
-import threading
 import time
 from functools import partial
 
@@ -8,7 +7,11 @@ from django.db.models.signals import pre_save
 
 from auditlog.models import LogEntry
 
-threadlocal = threading.local()
+try:
+    from asgiref.local import Local
+except ImportError:
+    from threading import local as Local
+threadlocal = Local()
 
 
 @contextlib.contextmanager
@@ -55,6 +58,8 @@ def _set_actor(user, sender, instance, signal_duid, **kwargs):
     else:
         if signal_duid != auditlog["signal_duid"]:
             return
+        if callable(user):
+            user = user()
         auth_user_model = get_user_model()
         if (
             sender == LogEntry

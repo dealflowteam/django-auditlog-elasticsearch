@@ -1,15 +1,17 @@
 import logging
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.db import models, transaction
-from django.dispatch import Signal
 from django.utils import timezone
 from django.utils.encoding import smart_str
 from elasticsearch.helpers import bulk
 from elasticsearch_dsl import Document, connections, Keyword, Date, Nested, InnerDoc, Text
 
 # Define a default Elasticsearch client
+from auditlog.models import LogEntry, get_int_id
+
 connections.create_connection(hosts=[settings.ELASTICSEARCH_HOST])
 
 MAX = 75
@@ -19,9 +21,6 @@ class Change(InnerDoc):
     field = Keyword(required=True)
     old = Text()
     new = Text()
-
-
-log_created = Signal()
 
 
 class ElasticSearchLogEntry(Document):
@@ -131,7 +130,6 @@ class ElasticSearchLogEntry(Document):
 
     def save(self, using=None, index=None, validate=True, skip_empty=True, **kwargs):
         try:
-            log_created.send(self.__class__, instance=self)
             return super().save(using, index, validate, skip_empty, **kwargs)
         except Exception:
             logging.exception("Error when saving log to elasticsearch", extra={'log_entry': self.to_dict()})
@@ -152,3 +150,65 @@ class ElasticSearchLogEntry(Document):
         if isinstance(pk, models.Model):
             pk = cls._get_pk_value(pk)
         return pk
+
+    @classmethod
+    def create_from_log_entry(cls, log_entry):
+        entry = log_entry
+        e_log_entry = ElasticSearchLogEntry(
+            action={entry.Action.DELETE: ElasticSearchLogEntry.Action.DELETE,
+                    entry.Action.UPDATE: ElasticSearchLogEntry.Action.UPDATE,
+                    entry.Action.CREATE: ElasticSearchLogEntry.Action.CREATE}[entry.action],
+            content_type_id=entry.content_type.id,
+            content_type_app_label=entry.content_type.app_label,
+            content_type_model=entry.content_type.model,
+
+            object_pk=entry.object_pk,
+            object_id=entry.object_id,
+            object_repr=entry.object_repr,
+
+            actor_id=get_int_id(entry.actor.id) if entry.actor else None,
+            actor_email=entry.actor.email if entry.actor else None,
+            actor_first_name=entry.actor.first_name if entry.actor else None,
+            actor_last_name=entry.actor.last_name if entry.actor else None,
+            remote_addr=entry.remote_addr,
+            timestamp=entry.timestamp or timezone.now(),
+            changes=[Change(field=field, old=old, new=new) for field, (old, new) in entry.changes.items()]
+        )
+        e_log_entry.save()
+        return e_log_entry
+
+    def to_log_entry(self, valid_ids=None):
+        if not valid_ids or self.content_type_id in valid_ids['content_types']:
+            content_type = ContentType(id=self.content_type_id,
+                                       model=self.content_type_model,
+                                       app_label=self.content_type_app_label)
+        else:
+            content_type = None
+        actor = None
+        if self.actor_id:
+            User = get_user_model()
+            if not valid_ids or self.actor_id in valid_ids['actors']:
+                actor = User(id=self.actor_id, email=self.actor_email, first_name=self.actor_first_name,
+                             last_name=self.actor_last_name)
+        return LogEntry(
+            timestamp=self.timestamp,
+            action={self.Action.CREATE: LogEntry.Action.CREATE,
+                    self.Action.UPDATE: LogEntry.Action.UPDATE,
+                    self.Action.DELETE: LogEntry.Action.DELETE}[self.action],
+            content_type=content_type,
+            object_id=self.object_id,
+            object_pk=self.object_pk,
+            object_repr=self.object_repr,
+            actor=actor,
+            changes={c.field: [c.old, c.new] for c in self.changes},
+            additional_data={
+                'actor_id': self.actor_id,
+                'actor_email': self.actor_email,
+                'actor_first_name': self.actor_first_name,
+                'actor_last_name': self.actor_last_name,
+                'content_type_id': self.content_type_id,
+                'content_type_model': self.content_type_model,
+                'content_type_app_label': self.content_type_app_label
+            },
+            remote_addr=self.remote_addr,
+        )

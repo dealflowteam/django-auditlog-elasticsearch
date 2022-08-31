@@ -19,7 +19,8 @@
                         <tr>
                             <th scope="grp-row">{{ log_entry.timestamp|date:"Y-m-d H:i:s.u" }}</th>
                             <td>{{ log_entry.user_link }}</td>
-                            <td>{{ log_entry.action }}</td>
+                            <td>{{ log_entry.get_action_display }}{%  if log_entry.action == log_entry.Action.UPDATE %}
+                              Fields: {{log_entry.changes|join:", "}}{% endif %}</td>
                             <td>{{ log_entry.log_link }}</td>
                         </tr>
                     {% endfor %}

@@ -1,23 +1,25 @@
-from auditlog.models import LogEntry
 from django import urls as urlresolvers
 from django.conf import settings
-from django.contrib.contenttypes.models import ContentType
-from django.shortcuts import render
-from django.urls import path, reverse
+from django.contrib.admin.options import get_content_type_for_model
+from django.contrib.admin.utils import unquote
+from django.core.exceptions import PermissionDenied
+from django.template.response import TemplateResponse
+from django.urls import reverse
 from django.urls.exceptions import NoReverseMatch
-from django.utils import dateformat
 from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
+from django.utils.text import capfirst
 from django.utils.timezone import localtime
-from elasticsearch_dsl import Q
+from django.utils.translation import gettext as _
 
-from auditlog.documents import ElasticSearchLogEntry
+from auditlog.models import LogEntry, get_int_id
 
 MAX = 75
 
+
 class LogEntryAdminMixin:
     def created(self, obj):
-        return localtime(obj.timestamp).strftime("%Y-%m-%d %H:%M:%S")
+        return localtime(obj.timestamp).strftime("%Y-%m-%d %H:%M:%S.%f")
 
     created.short_description = "Created"
 
@@ -29,7 +31,7 @@ class LogEntryAdminMixin:
                 link = urlresolvers.reverse(viewname, args=[obj.actor_id])
             except NoReverseMatch:
                 return "%s" % (obj.actor)
-            return format_html('<a href="{}">{}</a>', link, obj.actor_email)
+            return format_html('<a href="{}">{}</a>', link, obj.actor.email)
 
         return "system"
 
@@ -38,6 +40,7 @@ class LogEntryAdminMixin:
     def resource_url(self, obj):
         app_label, model = obj.content_type.app_label, obj.content_type.model
         viewname = f"admin:{app_label}_{model}_change"
+
         try:
             args = [obj.object_pk] if obj.object_id is None else [obj.object_id]
             link = urlresolvers.reverse(viewname, args=args)
@@ -63,20 +66,6 @@ class LogEntryAdminMixin:
 
     msg_short.short_description = "Changes"
 
-    def changes(self, obj):
-        if obj.action == ElasticSearchLogEntry.Action.DELETE or not obj.changes:
-            return ''  # delete
-        changes = obj.changes
-        msg = '<table class="grp-table"><thead><tr><th>#</th><th>Field</th><th>From</th><th>To</th></tr></thead>'
-        for i, change in enumerate(changes):
-            class_ = [f"grp-row grp-row-{'event' if i % 2 else 'odd'}"]
-            value = class_ + [i, change.field] + (['***', '***'] if change.field == 'password'
-                                                  else [change.old, change.new])
-            msg += format_html('<tr class="{}"><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>', *value)
-        msg.append("</table>")
-
-        return mark_safe("".join(msg))
-
     def msg(self, obj):
         changes = obj.changes
 
@@ -95,11 +84,11 @@ class LogEntryAdminMixin:
         msg = []
 
         if atom_changes:
-            msg.append("<table>")
+            msg.append("<table class='grp-table'>")
             msg.append(self._format_header("#", "Field", "From", "To"))
             for i, (field, change) in enumerate(sorted(atom_changes.items()), 1):
                 value = [i, field] + (["***", "***"] if field == "password" else change)
-                msg.append(self._format_line(*value))
+                msg.append(self._format_line(*value, _class=f"grp-row grp-row-{'event' if i % 2 else 'odd'}"))
             msg.append("</table>")
 
         if m2m_changes:
@@ -130,12 +119,12 @@ class LogEntryAdminMixin:
 
     def _format_header(self, *labels):
         return format_html(
-            "".join(["<tr>", "<th>{}</th>" * len(labels), "</tr>"]), *labels
+            "<thead>" + "".join(["<tr>", "<th>{}</th>" * len(labels), "</tr>"]) + "</thead>", *labels
         )
 
-    def _format_line(self, *values):
+    def _format_line(self, *values, _class=''):
         return format_html(
-            "".join(["<tr>", "<td>{}</td>" * len(values), "</tr>"]), *values
+            "".join([f"<tr class='{_class}'>", "<td>{}</td>" * len(values), "</tr>"]), *values
         )
 
 
@@ -145,40 +134,71 @@ class AuditlogAdminHistoryMixin(LogEntryAdminMixin):
         self.list_display = list(self.list_display) + ['history']
         self.readonly_fields = list(self.readonly_fields) + ['history']
 
-    def get_urls(self):
-        urls = super().get_urls()
-        info = self.model._meta.app_label, self.model._meta.model_name
-        new_urls = [
-            path('<object_id>/auditlog-history/', self.auditlog_history, name='%s_%s_auditlog-history' % info)
-        ]
-        return new_urls + urls
+    def get_log_entries(self, object):
+        content_type = get_content_type_for_model(object.__class__)
+        from auditlog.models import LogEntry, get_backend
+        backend = get_backend()
+        if backend == 'elastic':
+            from auditlog.documents import ElasticSearchLogEntry
+            from elasticsearch_dsl import Q
+            entries = ElasticSearchLogEntry.search().query(
+                Q('bool', must=[Q('bool', should=[Q('match', object_pk=str(object.pk)),
+                                                  Q('match', object_id=get_int_id(object.id))]),
+                                Q('match', content_type_id=content_type.pk)])
+            ).sort('-timestamp')
+            entries = entries[:entries.count()]
+        else:
+            entries = LogEntry.objects.filter(
+                object_id=object.id,
+                content_type=get_content_type_for_model(object.__class__)
+            ).select_related().order_by('-timestamp')
+        for entry in entries:
+            if backend == 'elastic':
+                link = reverse('admin:auditlog_elasticlogentrymodel_change', kwargs={'object_id': entry.meta.id})
+                entry = entry.to_log_entry()
+            else:
+                link = reverse('admin:auditlog_logentry_change', kwargs={'object_id': entry.id})
+            entry.user_link = self.user_url(entry)
+            entry.log_link = format_html(u'<a href="{}">Log entry</a>', link)
+            yield entry
 
-    def auditlog_history(self, request, *args, **kwargs):
-        pk = self.model._meta.pk.to_python(kwargs['object_id'])
-        id_ = self.model._meta.pk.get_prep_value(kwargs['object_id'])
-        instance = self.model.objects.get(pk=pk)
-        content_type = ContentType.objects.get_for_model(instance)
-        s = ElasticSearchLogEntry.search().query(
-            Q('bool', must=[Q('bool', should=[Q('match', object_pk=str(instance.pk)),
-                                              Q('match', object_id=id_)]),
-                            Q('match', content_type_id=content_type.pk)])
-        ).sort('-timestamp')
+    def history_view(self, request, object_id, extra_context=None):
+        "The 'history' admin view for this model."
 
-        def entries():
-            for entry in s[:s.count()]:
-                entry.user_link = self.user(entry)
-                link = reverse('admin:auditlog_logmodel_change', kwargs={'object_id': entry.meta.id})
-                entry.log_link = format_html(u'<a href="{}">Log entry</a>', link)
-                yield entry
+        # First check if the user can see this history.
+        model = self.model
+        obj = self.get_object(request, unquote(object_id))
+        if obj is None:
+            return self._get_obj_does_not_exist_redirect(request, model._meta, object_id)
+
+        if not self.has_view_or_change_permission(request, obj):
+            raise PermissionDenied
+
+        # Then get the history for this object.
+        opts = model._meta
+        app_label = opts.app_label
 
         context = {
-            'title': f'Change history: {instance}',
-            'opts': self.model._meta,
-            'log_entry_list': entries()
+            **self.admin_site.each_context(request),
+            'title': _('Change history: %s') % obj,
+            'subtitle': None,
+            'log_entry_list': self.get_log_entries(obj),
+            'module_name': str(capfirst(opts.verbose_name_plural)),
+            'object': obj,
+            'opts': opts,
+            'preserved_filters': self.get_preserved_filters(request),
+            **(extra_context or {}),
         }
-        return render(request, 'admin/auditlog_history.html', context)
+
+        request.current_app = self.admin_site.name
+
+        return TemplateResponse(request, self.object_history_template or [
+            "admin/%s/%s/auditlog_history.html" % (app_label, opts.model_name),
+            "admin/%s/auditlog_history.html" % app_label,
+            "admin/auditlog_history.html"
+        ], context)
 
     def history(self, obj):
         info = self.model._meta.app_label, self.model._meta.model_name
-        link = reverse(f'admin:{info[0]}_{info[1]}_auditlog-history', kwargs={'object_id': obj.pk})
+        link = reverse(f'admin:{info[0]}_{info[1]}_history', kwargs={'object_id': obj.pk})
         return format_html(u'<a href="{}">History</a>', link)

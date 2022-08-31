@@ -30,10 +30,13 @@ setup(
     python_requires=">=3.7",
     install_requires=[
         "Django>=3.2",
-        "python-dateutil>=2.7.0"        
-        'elasticsearch==7.12',
-        'elasticsearch-dsl==7.3.0',
+        "python-dateutil>=2.7.0"
     ],
+    extras_require={
+        "elasticsearch": ['elasticsearch==7.12',
+                          'elasticsearch-dsl==7.3.0', ],
+        "celery": ["celery-batches>=0.7"]
+    },
     zip_safe=False,
     classifiers=[
         "Programming Language :: Python :: 3",

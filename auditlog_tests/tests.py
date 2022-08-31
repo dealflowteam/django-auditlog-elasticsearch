@@ -1,10 +1,10 @@
 import datetime
 import itertools
-import json
 import warnings
 from unittest import mock
 
 import freezegun
+from celery import Celery
 from dateutil.tz import gettz
 from django.apps import apps
 from django.conf import settings
@@ -69,7 +69,7 @@ class SimpleModelTest(TestCase):
 
     def check_create_log_entry(self, obj, history):
         self.assertEqual(
-            history.action, ElasticSearchLogEntry.Action.CREATE, msg="Action is 'CREATE'"
+            history.action, LogEntry.Action.CREATE, msg="Action is 'CREATE'"
         )
         self.assertEqual(history.object_repr, str(obj), msg="Representation is equal")
 
@@ -266,14 +266,16 @@ class AltPrimaryKeyModelTest(NoActorMixin, AltPrimaryKeyModelBase):
 class AltPrimaryKeyModelWithActorTest(WithActorMixin, AltPrimaryKeyModelBase):
     pass
 
+
 class HashIdModelTest(SimpleModelTest):
     def make_object(self):
         return HashIdModel.objects.create(text='I am not difficult.')
 
-    def check_create_log_entry(self,obj, history):
+    def check_create_log_entry(self, obj, history):
         super().check_create_log_entry(obj, history)
         self.assertEqual(history.object_pk, str(self.obj.pk))
         self.assertEqual(history.object_id, self.obj.pk.id)
+
 
 class UUIDPrimaryKeyModelModelBase(SimpleModelTest):
     def make_object(self):
@@ -315,6 +317,17 @@ class ProxyModelTest(NoActorMixin, ProxyModelBase):
 
 
 class ProxyModelWithActorTest(WithActorMixin, ProxyModelBase):
+    pass
+
+
+@override_settings(AUDITLOG_BACKEND='celery')
+class CeleryProxyModelWithActorTest(ProxyModelWithActorTest):
+    @classmethod
+    def setUpClass(cls):
+        app = Celery('test')
+        app.config_from_object('django.conf:settings', namespace='CELERY')
+        super().setUpClass()
+
     pass
 
 
@@ -648,7 +661,7 @@ class DateTimeFieldModelTest(TestCase):
             timestamp=timestamp,
             date=date,
             time=time,
-                                 naive_dt=self.now,
+            naive_dt=self.now,
         )
         dtm.save()
         self.assertEqual(dtm.history.count(), 1, msg="There is one log entry")
@@ -672,7 +685,7 @@ class DateTimeFieldModelTest(TestCase):
             timestamp=timestamp,
             date=date,
             time=time,
-                                 naive_dt=self.now,
+            naive_dt=self.now,
         )
         dtm.save()
         self.assertEqual(dtm.history.count(), 1, msg="There is one log entry")
@@ -694,7 +707,7 @@ class DateTimeFieldModelTest(TestCase):
             timestamp=timestamp,
             date=date,
             time=time,
-                                 naive_dt=self.now,
+            naive_dt=self.now,
         )
         dtm.save()
         self.assertEqual(dtm.history.count(), 1, msg="There is one log entry")
@@ -716,7 +729,7 @@ class DateTimeFieldModelTest(TestCase):
             timestamp=timestamp,
             date=date,
             time=time,
-                                 naive_dt=self.now,
+            naive_dt=self.now,
         )
         dtm.save()
         self.assertEqual(dtm.history.count(), 1, msg="There is one log entry")
@@ -738,7 +751,7 @@ class DateTimeFieldModelTest(TestCase):
             timestamp=timestamp,
             date=date,
             time=time,
-                                 naive_dt=self.now,
+            naive_dt=self.now,
         )
         dtm.save()
         self.assertEqual(dtm.history.count(), 1, msg="There is one log entry")
@@ -760,7 +773,7 @@ class DateTimeFieldModelTest(TestCase):
             timestamp=timestamp,
             date=date,
             time=time,
-                                 naive_dt=self.now,
+            naive_dt=self.now,
         )
         dtm.save()
         self.assertEqual(dtm.history.count(), 1, msg="There is one log entry")
@@ -913,7 +926,7 @@ class DateTimeFieldModelTest(TestCase):
             timestamp=timestamp,
             date=date,
             time=time,
-                                 naive_dt=self.now,
+            naive_dt=self.now,
         )
         dtm.save()
 
@@ -1153,7 +1166,6 @@ class ChoicesFieldModelTest(TestCase):
         )
 
     def test_changes_display_dict_single_choice(self):
-
         self.assertEqual(
             self.obj.history.latest().changes_display_dict["status"][1],
             "Red",

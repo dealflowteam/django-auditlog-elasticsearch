@@ -68,8 +68,10 @@ def get_field_value(obj, field):
         value = field.to_python(getattr(obj, field.name, None))
         if value is not None and settings.USE_TZ and not timezone.is_naive(value):
             value = timezone.make_naive(value, timezone=timezone.utc)
-
-    value = smart_str(value, strings_only=True)
+    elif isinstance(field, JSONField):
+        value = field.to_python(getattr(obj, field.name, None))
+    else:
+        value = smart_str(value, strings_only=True)
 
     return value
 

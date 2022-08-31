@@ -1,5 +1,7 @@
 import contextlib
 
+from django.conf import settings
+
 from auditlog.context import set_actor
 
 
@@ -25,8 +27,8 @@ class AuditlogMiddleware:
     def __call__(self, request):
         remote_addr = self._get_remote_addr(request)
 
-        if hasattr(request, "user") and request.user.is_authenticated:
-            context = set_actor(actor=request.user, remote_addr=remote_addr)
+        if hasattr(request, "user") and request.user.is_authenticated or 'rest_framework' in settings.INSTALLED_APPS:
+            context = set_actor(actor=lambda: request.user, remote_addr=remote_addr)
         else:
             context = contextlib.nullcontext()
 

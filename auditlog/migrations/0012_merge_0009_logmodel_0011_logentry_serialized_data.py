@@ -6,7 +6,7 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('auditlog', '0009_logmodel'),
+        ('auditlog', '0010_alter_logentry_changes'),
         ('auditlog', '0011_logentry_serialized_data'),
     ]
 
