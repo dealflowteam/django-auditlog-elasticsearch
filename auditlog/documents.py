@@ -6,11 +6,12 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import models, transaction
 from django.utils import timezone
 from django.utils.encoding import smart_str
+from django.utils.timezone import is_aware, make_aware
 from elasticsearch.helpers import bulk
 from elasticsearch_dsl import Document, connections, Keyword, Date, Nested, InnerDoc, Text
 
 # Define a default Elasticsearch client
-from auditlog.models import LogEntry, get_int_id
+from auditlog.models import LogEntry
 
 connections.create_connection(hosts=[settings.ELASTICSEARCH_HOST])
 
@@ -152,30 +153,36 @@ class ElasticSearchLogEntry(Document):
         return pk
 
     @classmethod
-    def create_from_log_entry(cls, log_entry):
-        entry = log_entry
-        e_log_entry = ElasticSearchLogEntry(
-            action={entry.Action.DELETE: ElasticSearchLogEntry.Action.DELETE,
-                    entry.Action.UPDATE: ElasticSearchLogEntry.Action.UPDATE,
-                    entry.Action.CREATE: ElasticSearchLogEntry.Action.CREATE}[entry.action],
-            content_type_id=entry.content_type.id,
-            content_type_app_label=entry.content_type.app_label,
-            content_type_model=entry.content_type.model,
-
-            object_pk=entry.object_pk,
-            object_id=entry.object_id,
-            object_repr=entry.object_repr,
-
-            actor_id=get_int_id(entry.actor.id) if entry.actor else None,
-            actor_email=entry.actor.email if entry.actor else None,
-            actor_first_name=entry.actor.first_name if entry.actor else None,
-            actor_last_name=entry.actor.last_name if entry.actor else None,
-            remote_addr=entry.remote_addr,
-            timestamp=entry.timestamp or timezone.now(),
-            changes=[Change(field=field, old=old, new=new) for field, (old, new) in entry.changes.items()]
+    def from_db_entry(cls, db_entry):
+        entry = ElasticSearchLogEntry(
+            meta={'id': db_entry.pk},
+            action={db_entry.Action.DELETE: ElasticSearchLogEntry.Action.DELETE,
+                    db_entry.Action.UPDATE: ElasticSearchLogEntry.Action.UPDATE,
+                    db_entry.Action.CREATE: ElasticSearchLogEntry.Action.CREATE}[db_entry.action],
+            content_type_id=db_entry.content_type.id,
+            content_type_app_label=db_entry.content_type.app_label,
+            content_type_model=db_entry.content_type.model,
+            object_pk=db_entry.object_pk,
+            object_id=db_entry.object_id,
+            object_repr=db_entry.object_repr,
+            timestamp=db_entry.timestamp or timezone.now(),
         )
-        e_log_entry.save()
-        return e_log_entry
+        if db_entry.actor:
+            entry.actor_id = str(db_entry.actor.pk)
+            entry.actor_email = db_entry.actor.email
+            entry.actor_first_name = db_entry.actor.first_name
+            entry.actor_last_name = db_entry.actor.last_name
+        if db_entry.remote_addr:
+            entry.remote_addr = db_entry.remote_addr
+        if db_entry.changes:
+            entry.changes = [Change(field=field, old=old, new=new) for field, (old, new) in db_entry.changes.items()]
+        return entry
+
+    @classmethod
+    def create_from_db_entry(cls, db_entry):
+        entry = cls.from_db_entry(db_entry)
+        entry.save()
+        return entry
 
     def to_log_entry(self, valid_ids=None):
         if not valid_ids or self.content_type_id in valid_ids['content_types']:
@@ -190,6 +197,8 @@ class ElasticSearchLogEntry(Document):
             if not valid_ids or self.actor_id in valid_ids['actors']:
                 actor = User(id=self.actor_id, email=self.actor_email, first_name=self.actor_first_name,
                              last_name=self.actor_last_name)
+        if not is_aware(self.timestamp):
+            self.timestamp = make_aware(self.timestamp)
         return LogEntry(
             timestamp=self.timestamp,
             action={self.Action.CREATE: LogEntry.Action.CREATE,
