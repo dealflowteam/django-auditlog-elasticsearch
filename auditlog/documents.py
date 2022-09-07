@@ -62,11 +62,20 @@ class ElasticSearchLogEntry(Document):
 
     @property
     def actor(self):
-        if self.actor_email:
-            if self.actor_first_name and self.actor_last_name:
-                return f'{self.actor_first_name} {self.actor_last_name} ({self.actor_email})'
-            return self.actor_email
+        User = get_user_model()
+        if self.actor_id:
+            return User(pk=self.actor_id,
+                        email=self.actor_email,
+                        first_name=self.actor_first_name,
+                        last_name=self.actor_last_name)
         return None
+
+    @actor.setter
+    def actor(self, user):
+        self.actor_id = str(user.id)
+        self.actor_email = user.email
+        self.actor_first_name = user.first_name
+        self.actor_last_name = user.last_name
 
     @property
     def changed_fields(self):
@@ -168,10 +177,7 @@ class ElasticSearchLogEntry(Document):
             timestamp=db_entry.timestamp or timezone.now(),
         )
         if db_entry.actor:
-            entry.actor_id = str(db_entry.actor.pk)
-            entry.actor_email = db_entry.actor.email
-            entry.actor_first_name = db_entry.actor.first_name
-            entry.actor_last_name = db_entry.actor.last_name
+            entry.actor = db_entry.actor
         if db_entry.remote_addr:
             entry.remote_addr = db_entry.remote_addr
         if db_entry.changes:
@@ -193,12 +199,11 @@ class ElasticSearchLogEntry(Document):
             content_type = None
         actor = None
         if self.actor_id:
-            User = get_user_model()
             if not valid_ids or self.actor_id in valid_ids['actors']:
-                actor = User(id=self.actor_id, email=self.actor_email, first_name=self.actor_first_name,
-                             last_name=self.actor_last_name)
+                actor = self.actor
         if not is_aware(self.timestamp):
             self.timestamp = make_aware(self.timestamp)
+        from .models import LogEntry
         return LogEntry(
             timestamp=self.timestamp,
             action={self.Action.CREATE: LogEntry.Action.CREATE,

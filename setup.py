@@ -1,6 +1,6 @@
 import os
 
-from setuptools import setup
+from setuptools import setup, find_packages
 
 # Readme as long description
 with open(os.path.join(os.path.dirname(__file__), "README.md")) as readme_file:
@@ -10,12 +10,7 @@ setup(
     name="django-auditlog",
     use_scm_version={"version_scheme": "post-release"},
     setup_requires=["setuptools_scm"],
-    packages=[
-        "auditlog",
-        "auditlog.migrations",
-        "auditlog.management",
-        "auditlog.management.commands",
-    ],
+    packages=find_packages(exclude=['auditlog_tests.*']),
     url="https://github.com/jazzband/django-auditlog",
     project_urls={
         "Documentation": "https://django-auditlog.readthedocs.io",

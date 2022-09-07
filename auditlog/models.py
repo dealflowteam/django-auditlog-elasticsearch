@@ -499,17 +499,18 @@ class LogEntry(models.Model):
             changes_display_dict[verbose_name] = values_display
         return changes_display_dict
 
-    def save(self, *args, **kwargs):
+    def save(self, force_insert=False, force_update=False, using=None,
+             update_fields=None):
         backend = get_backend()
         if backend == 'db':
-            return super().save(*args, **kwargs)
+            return super().save(force_insert, force_update, using, update_fields)
         else:
             pre_save.send(
-                sender=self.__class__, instance=self, raw=False, using=None,
-                update_fields=None,
+                sender=self.__class__, instance=self, raw=False, using=using,
+                update_fields=update_fields,
             )
             if backend == 'celery':
-                data = {f: v for f, v in self.__dict__.items() if f not in ['_state']}
+                data = {f: get_int_id(v) for f, v in self.__dict__.items() if f not in ['_state']}
                 from auditlog.tasks import save_log_entries
                 save_log_entries.delay(**data)
             else:

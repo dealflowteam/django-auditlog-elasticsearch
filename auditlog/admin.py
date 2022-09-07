@@ -1,4 +1,3 @@
-import elasticsearch
 from django.contrib import admin
 from django.http import Http404
 from django.shortcuts import render
@@ -84,6 +83,7 @@ class ElasticLogEntryModelAdmin(LogEntryAdmin):
         return render(request, 'admin/logs_list.html', context=context)
 
     def get_object(self, request, object_id, from_field=None):
+        import elasticsearch
         from auditlog.documents import ElasticSearchLogEntry
         try:
             return ElasticSearchLogEntry.get(object_id).to_log_entry()

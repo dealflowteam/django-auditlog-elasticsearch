@@ -24,8 +24,8 @@ def create_db_entries_from_document_entries(from_timestamp, to_timestamp, existi
     if valid_ids is None:
         valid_ids = get_valid_ids()
     last_timestamp = from_timestamp
-    for e in ElasticSearchLogEntry.search().filter('range', timestamp={'gt': from_timestamp.isoformat(),
-                                                                       'lte': to_timestamp.isoformat()}).scan():
+    for e in ElasticSearchLogEntry.search().filter('range', timestamp={'gte': from_timestamp.isoformat(),
+                                                                       'lt': to_timestamp.isoformat()}).scan():
         entry = e.to_log_entry(valid_ids)
         key = (entry.timestamp, entry.content_type_id, entry.object_id)
         if e.timestamp > last_timestamp:
@@ -34,12 +34,13 @@ def create_db_entries_from_document_entries(from_timestamp, to_timestamp, existi
             if key in existing:
                 continue
             existing.add(key)
+        count += 1
         to_create.append(entry)
         if len(to_create) > 10000:
             LogEntry.objects.bulk_create(to_create)
             to_create = []
-        count += 1
-    LogEntry.objects.bulk_create(to_create)
+    if to_create:
+        LogEntry.objects.bulk_create(to_create)
     return count, last_timestamp
 
 
@@ -62,7 +63,7 @@ class Command(BaseCommand):
         while timestamp < now:
             end_timestamp = (timestamp + timedelta(days=32)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             existing = set(
-                LogEntry.objects.filter(timestamp__gt=timestamp, timestamp__lte=end_timestamp) \
+                LogEntry.objects.filter(timestamp__gte=timestamp, timestamp__lt=end_timestamp) \
                     .values_list('timestamp', 'content_type_id', 'object_id'))
             print(f"Migrating records from {timestamp} to {end_timestamp}. Omitting {len(existing)} records")
             count, last_timestamp = create_db_entries_from_document_entries(timestamp, end_timestamp, existing,
