@@ -4,9 +4,10 @@ from functools import partial
 
 from django.apps import apps
 from django.conf import settings
+from django.db.models.signals import pre_save
 from django.utils.deprecation import MiddlewareMixin
 
-from auditlog.documents import LogEntry, log_created
+from auditlog.models import LogEntry
 
 threadlocal = threading.local()
 
@@ -34,14 +35,14 @@ class AuditlogMiddleware(MiddlewareMixin):
 
         # Connect signal for automatic logging
         set_actor = partial(self.set_actor, request=request, signal_duid=threadlocal.auditlog['signal_duid'])
-        log_created.connect(set_actor, sender=LogEntry, dispatch_uid=threadlocal.auditlog['signal_duid'], weak=False)
+        pre_save.connect(set_actor, sender=LogEntry, dispatch_uid=threadlocal.auditlog['signal_duid'], weak=False)
 
     def process_response(self, request, response):
         """
         Disconnects the signal receiver to prevent it from staying active.
         """
         if hasattr(threadlocal, 'auditlog'):
-            log_created.disconnect(sender=LogEntry, dispatch_uid=threadlocal.auditlog['signal_duid'])
+            pre_save.disconnect(sender=LogEntry, dispatch_uid=threadlocal.auditlog['signal_duid'])
 
         return response
 
@@ -50,7 +51,7 @@ class AuditlogMiddleware(MiddlewareMixin):
         Disconnects the signal receiver to prevent it from staying active in case of an exception.
         """
         if hasattr(threadlocal, 'auditlog'):
-            log_created.disconnect(sender=LogEntry, dispatch_uid=threadlocal.auditlog['signal_duid'])
+            pre_save.disconnect(sender=LogEntry, dispatch_uid=threadlocal.auditlog['signal_duid'])
 
         return None
 
@@ -71,9 +72,6 @@ class AuditlogMiddleware(MiddlewareMixin):
                 except ValueError:
                     auth_user_model = apps.get_model('auth', 'user')
                 if sender == LogEntry and isinstance(user, auth_user_model) and instance.actor_id is None:
-                    instance.actor_id = str(user.id)
-                    instance.actor_email = user.email
-                    instance.actor_first_name = user.first_name
-                    instance.actor_last_name = user.last_name
+                    instance.actor=user
 
                 instance.remote_addr = threadlocal.auditlog['remote_addr']

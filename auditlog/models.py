@@ -6,11 +6,27 @@ from django.conf import settings
 from django.contrib.contenttypes.fields import GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldDoesNotExist
-from django.db import models, DEFAULT_DB_ALIAS
+from django.db import models, DEFAULT_DB_ALIAS, transaction
 from django.db.models import QuerySet, Q, Field, JSONField
+from django.db.models.signals import pre_save
 from django.utils import formats, timezone
 from django.utils.encoding import smart_str
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
+
+
+def get_backend():
+    return getattr(settings, 'AUDITLOG_BACKEND', 'db')
+
+
+def get_int_id(pk):
+    try:
+        from hashid_field import Hashid
+    except ImportError:
+        pass
+    else:
+        if isinstance(pk, Hashid):
+            return pk.id
+    return pk
 
 
 class LogEntryManager(models.Manager):
@@ -34,9 +50,10 @@ class LogEntryManager(models.Manager):
 
         if changes is not None:
             kwargs.setdefault('content_type', ContentType.objects.get_for_model(instance))
-            kwargs.setdefault('object_pk', pk)
+            kwargs.setdefault('object_pk', str(pk))
             kwargs.setdefault('object_repr', smart_str(instance))
 
+            pk = get_int_id(pk)
             if isinstance(pk, int):
                 kwargs.setdefault('object_id', pk)
 
@@ -49,13 +66,18 @@ class LogEntryManager(models.Manager):
             if kwargs.get('action', None) is LogEntry.Action.CREATE:
                 if kwargs.get('object_id', None) is not None and self.filter(content_type=kwargs.get('content_type'),
                                                                              object_id=kwargs.get(
-                                                                                     'object_id')).exists():
+                                                                                 'object_id')).exists():
                     self.filter(content_type=kwargs.get('content_type'), object_id=kwargs.get('object_id')).delete()
                 else:
                     self.filter(content_type=kwargs.get('content_type'), object_pk=kwargs.get('object_pk', '')).delete()
             # save LogEntry to same database instance is using
             db = instance._state.db
-            return self.create(**kwargs) if db is None or db == '' else self.using(db).create(**kwargs)
+            log_entry = self.model(**kwargs) if db is None or db == '' else self.using(db).model(**kwargs)
+            if getattr(settings, 'AUDITLOG_ON_COMMIT', False):
+                transaction.on_commit(log_entry.save)
+            else:
+                log_entry.save()
+            return log_entry
         return None
 
     def get_for_object(self, instance):
@@ -176,7 +198,7 @@ class LogEntry(models.Model):
     actor = models.ForeignKey(to=settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True,
                               related_name='+', verbose_name=_("actor"))
     remote_addr = models.GenericIPAddressField(blank=True, null=True, verbose_name=_("remote address"))
-    timestamp = models.DateTimeField(auto_now_add=True, verbose_name=_("timestamp"))
+    timestamp = models.DateTimeField(default=timezone.now, verbose_name=_("timestamp"))
     additional_data = JSONField(blank=True, null=True, verbose_name=_("additional data"))
 
     objects = LogEntryManager()
@@ -247,7 +269,9 @@ class LogEntry(models.Model):
             choices_dict = None
             if getattr(field, 'choices') and len(field.choices) > 0:
                 choices_dict = dict(field.choices)
-            if hasattr(field, 'base_field') and isinstance(field.base_field, Field) and getattr(field.base_field, 'choices') and len(field.base_field.choices) > 0:
+            if hasattr(field, 'base_field') and isinstance(field.base_field, Field) and getattr(field.base_field,
+                                                                                                'choices') and len(
+                field.base_field.choices) > 0:
                 choices_dict = dict(field.base_field.choices)
 
             if choices_dict:
@@ -291,6 +315,24 @@ class LogEntry(models.Model):
             verbose_name = model_fields['mapping_fields'].get(field.name, getattr(field, 'verbose_name', field.name))
             changes_display_dict[verbose_name] = values_display
         return changes_display_dict
+
+    def save(self, force_insert=False, force_update=False, using=None,
+             update_fields=None):
+        backend = get_backend()
+        if backend == 'db':
+            return super().save(force_insert, force_update, using, update_fields)
+        else:
+            pre_save.send(
+                sender=self.__class__, instance=self, raw=False, using=using,
+                update_fields=update_fields,
+            )
+            if backend == 'celery':
+                data = {f: get_int_id(v) for f, v in self.__dict__.items() if f not in ['_state']}
+                from auditlog.tasks import save_log_entries
+                save_log_entries.delay(**data)
+            else:
+                from .documents import LogEntry as ElasticSearchLogEntry
+                ElasticSearchLogEntry.create_from_log_entry(self)
 
 
 class AuditlogHistoryField(GenericRelation):

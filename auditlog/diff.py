@@ -72,17 +72,34 @@ def get_field_value(obj, field):
     return value
 
 
-def model_instance_diff(old, new):
+def mask_str(value: str) -> str:
     """
-    Calculates the differences between two model instances. One of the instances may be ``None`` (i.e., a newly
-    created model or deleted model). This will cause all fields with a value to have changed (from ``None``).
+    Masks the first half of the input string to remove sensitive data.
+
+    :param value: The value to mask.
+    :type value: str
+    :return: The masked version of the string.
+    :rtype: str
+    """
+    mask_limit = int(len(value) / 2)
+    return "*" * mask_limit + value[mask_limit:]
+
+
+def model_instance_diff(old, new, fields_to_check=None):
+    """
+    Calculates the differences between two model instances. One of the instances may be ``None``
+    (i.e., a newly created model or deleted model). This will cause all fields with a value to have
+    changed (from ``None``).
 
     :param old: The old state of the model instance.
     :type old: Model
     :param new: The new state of the model instance.
     :type new: Model
-    :return: A dictionary with the names of the changed fields as keys and a two tuple of the old and new field values
-             as value.
+    :param fields_to_check: An iterable of the field names to restrict the diff to, while ignoring the rest of
+        the model's fields. This is used to pass the `update_fields` kwarg from the model's `save` method.
+    :type fields_to_check: Iterable
+    :return: A dictionary with the names of the changed fields as keys and a two tuple of the old and new
+            field values as value.
     :rtype: dict
     """
     from auditlog.registry import auditlog
@@ -92,7 +109,7 @@ def model_instance_diff(old, new):
     if not (new is None or isinstance(new, Model)):
         raise TypeError("The supplied new instance is not a valid model instance.")
 
-    diff = []
+    diff = {}
 
     if old is not None and new is not None:
         fields = set(old._meta.fields + new._meta.fields)
@@ -106,6 +123,9 @@ def model_instance_diff(old, new):
     else:
         fields = set()
         model_fields = None
+
+    if fields_to_check:
+        fields = {field for field in fields if field.name in fields_to_check}
 
     # Check if fields must be filtered
     if model_fields and (model_fields['include_fields'] or model_fields['exclude_fields']) and fields:
@@ -124,11 +144,12 @@ def model_instance_diff(old, new):
         new_value = get_field_value(new, field)
 
         if old_value != new_value:
-            diff.append({
-                'field': field.name,
-                'old': old_value,
-                'new': new_value
-            })
+            diff[field.name] = (smart_str(old_value), smart_str(new_value))
+    # diff = [{
+    #     'field': name,
+    #     'old': old_value,
+    #     'new': new_value
+    # } for name,(old_value,new_value) in diff.items()]
 
     if len(diff) == 0:
         diff = None

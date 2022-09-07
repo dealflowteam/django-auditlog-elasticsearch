@@ -1,17 +1,18 @@
 import logging
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.dispatch import Signal
 from django.utils import timezone
 from django.utils.encoding import smart_str
+from django.utils.timezone import is_aware, make_aware
 from elasticsearch.helpers import bulk
 from elasticsearch_dsl import Document, connections, Keyword, Date, Nested, InnerDoc, Text
 
 # Define a default Elasticsearch client
 connections.create_connection(hosts=[settings.ELASTICSEARCH_HOST])
-
 
 MAX = 75
 
@@ -26,7 +27,6 @@ log_created = Signal()
 
 
 class LogEntry(Document):
-
     class Action:
         CREATE = 'create'
         UPDATE = 'update'
@@ -64,11 +64,20 @@ class LogEntry(Document):
 
     @property
     def actor(self):
-        if self.actor_email:
-            if self.actor_first_name and self.actor_last_name:
-                return f'{self.actor_first_name} {self.actor_last_name} ({self.actor_email})'
-            return self.actor_email
+        User = get_user_model()
+        if self.actor_id:
+            return User(pk=self.actor_id,
+                        email=self.actor_email,
+                        first_name=self.actor_first_name,
+                        last_name=self.actor_last_name)
         return None
+
+    @actor.setter
+    def actor(self, user):
+        self.actor_id = str(user.id)
+        self.actor_email = user.email
+        self.actor_first_name = user.first_name
+        self.actor_last_name = user.last_name
 
     @property
     def changed_fields(self):
@@ -152,3 +161,69 @@ class LogEntry(Document):
         if isinstance(pk, models.Model):
             pk = cls._get_pk_value(pk)
         return pk
+
+    @classmethod
+    def from_db_entry(cls, db_entry):
+        entry = LogEntry(
+            meta={'id': db_entry.pk},
+            action={db_entry.Action.DELETE: LogEntry.Action.DELETE,
+                    db_entry.Action.UPDATE: LogEntry.Action.UPDATE,
+                    db_entry.Action.CREATE: LogEntry.Action.CREATE}[db_entry.action],
+            content_type_id=db_entry.content_type.id,
+            content_type_app_label=db_entry.content_type.app_label,
+            content_type_model=db_entry.content_type.model,
+            object_pk=db_entry.object_pk,
+            object_id=db_entry.object_id,
+            object_repr=db_entry.object_repr,
+            timestamp=db_entry.timestamp or timezone.now(),
+        )
+        if db_entry.actor:
+            entry.actor = db_entry.actor
+        if db_entry.remote_addr:
+            entry.remote_addr = db_entry.remote_addr
+        if db_entry.changes:
+            entry.changes = [Change(field=field, old=old, new=new) for field, (old, new) in db_entry.changes.items()]
+        return entry
+
+    @classmethod
+    def create_from_db_entry(cls, db_entry):
+        entry = cls.from_db_entry(db_entry)
+        entry.save()
+        return entry
+
+    def to_log_entry(self, valid_ids=None):
+        if not valid_ids or self.content_type_id in valid_ids['content_types']:
+            content_type = ContentType(id=self.content_type_id,
+                                       model=self.content_type_model,
+                                       app_label=self.content_type_app_label)
+        else:
+            content_type = None
+        actor = None
+        if self.actor_id:
+            if not valid_ids or self.actor_id in valid_ids['actors']:
+                actor = self.actor
+        if not is_aware(self.timestamp):
+            self.timestamp = make_aware(self.timestamp)
+        from .models import LogEntry
+        return LogEntry(
+            timestamp=self.timestamp,
+            action={self.Action.CREATE: LogEntry.Action.CREATE,
+                    self.Action.UPDATE: LogEntry.Action.UPDATE,
+                    self.Action.DELETE: LogEntry.Action.DELETE}[self.action],
+            content_type=content_type,
+            object_id=self.object_id,
+            object_pk=self.object_pk,
+            object_repr=self.object_repr,
+            actor=actor,
+            changes={c.field: [c.old, c.new] for c in self.changes},
+            additional_data={
+                'actor_id': self.actor_id,
+                'actor_email': self.actor_email,
+                'actor_first_name': self.actor_first_name,
+                'actor_last_name': self.actor_last_name,
+                'content_type_id': self.content_type_id,
+                'content_type_model': self.content_type_model,
+                'content_type_app_label': self.content_type_app_label
+            },
+            remote_addr=self.remote_addr,
+        )

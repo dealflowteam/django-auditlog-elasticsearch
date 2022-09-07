@@ -23,9 +23,12 @@ setup(
     install_requires=[
         'django-jsonfield>=1.0.0',
         'python-dateutil>=2.6.0',
-         'elasticsearch==7.12',
-        'elasticsearch-dsl==7.3.0',
     ],
+    extras_require={
+        "elasticsearch": ['elasticsearch==7.12',
+                          'elasticsearch-dsl==7.3.0', ],
+        "celery": ["celery-batches>=0.5"]
+    },
     zip_safe=False,
     classifiers=[
         'Programming Language :: Python :: 2',
