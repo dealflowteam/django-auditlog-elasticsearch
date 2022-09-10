@@ -1,5 +1,6 @@
 import datetime
 import itertools
+import time
 import warnings
 from unittest import mock
 
@@ -22,6 +23,7 @@ from auditlog.diff import model_instance_diff
 from auditlog.middleware import AuditlogMiddleware
 from auditlog.models import LogEntry
 from auditlog.registry import AuditlogModelRegistry, AuditLogRegistrationError, auditlog
+from auditlog.tasks import backup_auditlog_to_db
 from auditlog_tests.models import (
     AdditionalDataIncludedModel,
     AltPrimaryKeyModel,
@@ -1791,3 +1793,18 @@ class TestModelSerialization(TestCase):
                 "value": 11,
             },
         )
+
+
+class TestElasticSearch(TestCase):
+    def test_backup_log_entries(self):
+        from auditlog.documents import ElasticSearchLogEntry
+        from auditlog.models import LogEntry
+        assert LogEntry.objects.count() == 0
+        backup_auditlog_to_db()
+        assert LogEntry.objects.count() == ElasticSearchLogEntry.search().count()
+        with self.captureOnCommitCallbacks(execute=True):
+            SimpleModel.objects.create()
+        while ElasticSearchLogEntry.search().count() == LogEntry.objects.count():
+            time.sleep(0.2)
+        backup_auditlog_to_db()
+        assert LogEntry.objects.count() == ElasticSearchLogEntry.search().count()
