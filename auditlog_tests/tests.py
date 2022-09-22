@@ -23,7 +23,7 @@ from auditlog.diff import model_instance_diff
 from auditlog.middleware import AuditlogMiddleware
 from auditlog.models import LogEntry
 from auditlog.registry import AuditlogModelRegistry, AuditLogRegistrationError, auditlog
-from auditlog.tasks import backup_auditlog_to_db
+from auditlog.tasks import backup_elastic_to_db
 from auditlog_tests.models import (
     AdditionalDataIncludedModel,
     AltPrimaryKeyModel,
@@ -1800,11 +1800,11 @@ class TestElasticSearch(TestCase):
         from auditlog.documents import ElasticSearchLogEntry
         from auditlog.models import LogEntry
         assert LogEntry.objects.count() == 0
-        backup_auditlog_to_db()
+        backup_elastic_to_db()
         assert LogEntry.objects.count() == ElasticSearchLogEntry.search().count()
         with self.captureOnCommitCallbacks(execute=True):
             SimpleModel.objects.create()
         while ElasticSearchLogEntry.search().count() == LogEntry.objects.count():
             time.sleep(0.2)
-        backup_auditlog_to_db()
+        backup_elastic_to_db()
         assert LogEntry.objects.count() == ElasticSearchLogEntry.search().count()

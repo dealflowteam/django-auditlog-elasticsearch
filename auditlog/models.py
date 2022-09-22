@@ -513,9 +513,9 @@ class LogEntry(models.Model):
                 data = {f: get_int_id(v) for f, v in self.__dict__.items() if f not in ['_state']}
                 from auditlog.tasks import save_log_entries
                 save_log_entries.delay(**data)
-            else:
+            elif backend == 'elastic':
                 from .documents import ElasticSearchLogEntry
-                ElasticSearchLogEntry.create_from_log_entry(self)
+                ElasticSearchLogEntry.create_from_db_entry(self)
 
 
 class AuditlogHistoryField(GenericRelation):
