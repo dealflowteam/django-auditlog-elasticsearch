@@ -138,19 +138,25 @@ class AuditlogAdminHistoryMixin(LogEntryAdminMixin):
         content_type = get_content_type_for_model(object.__class__)
         from auditlog.models import LogEntry, get_backend
         backend = get_backend()
+        object_id = get_int_id(object.pk)
         if backend == 'elastic':
             from auditlog.documents import ElasticSearchLogEntry
             from elasticsearch_dsl import Q
+            query = [Q('match', object_pk=str(object.pk))]
+            if isinstance(object_id, int):
+                query.append(Q('match', object_id=object_id))
             entries = ElasticSearchLogEntry.search().query(
-                Q('bool', must=[Q('bool', should=[Q('match', object_pk=str(object.pk)),
-                                                  Q('match', object_id=get_int_id(object.id))]),
+                Q('bool', must=[Q('bool', should=query),
                                 Q('match', content_type_id=content_type.pk)])
             ).sort('-timestamp')
             entries = entries[:entries.count()]
         else:
+            from django.db.models import Q
+            query = Q(object_pk=object.pk)
+            if isinstance(object_id, int):
+                query = query | Q(object_id=object_id)
             entries = LogEntry.objects.filter(
-                object_id=object.id,
-                content_type=get_content_type_for_model(object.__class__)
+                query & Q(content_type=get_content_type_for_model(object.__class__))
             ).select_related().order_by('-timestamp')
         for entry in entries:
             if backend == 'elastic':
