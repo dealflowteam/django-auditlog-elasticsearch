@@ -2,6 +2,7 @@ import datetime
 
 from celery import current_app as app
 from celery_batches import Batches
+from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 
@@ -13,7 +14,9 @@ def save_log_entries(requests):
     to_create = []
     for request in requests:
         to_create.append(LogEntry(**request.kwargs))
-        app.backend.mark_as_done(request.id, None, request=request)
+        if not settings.CELERY_TASK_ALWAYS_EAGER:
+            app.backend.mark_as_done(request.id, None, request=request)
+
     return LogEntry.objects.bulk_create(to_create)
 
 
