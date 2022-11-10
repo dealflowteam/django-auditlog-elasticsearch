@@ -135,7 +135,7 @@ class AuditlogAdminHistoryMixin(LogEntryAdminMixin):
         self.readonly_fields = list(self.readonly_fields) + ['history']
 
     def get_log_entries(self, object):
-        content_type = get_content_type_for_model(object.__class__)
+        content_type = get_content_type_for_model(object)
         from auditlog.models import LogEntry, get_backend
         backend = get_backend()
         object_id = get_int_id(object.pk)
@@ -156,7 +156,7 @@ class AuditlogAdminHistoryMixin(LogEntryAdminMixin):
             if isinstance(object_id, int):
                 query = query | Q(object_id=object_id)
             entries = LogEntry.objects.filter(
-                query & Q(content_type=get_content_type_for_model(object.__class__))
+                query & Q(content_type=content_type)
             ).select_related().order_by('-timestamp')
         for entry in entries:
             if backend == 'elastic':
@@ -183,7 +183,6 @@ class AuditlogAdminHistoryMixin(LogEntryAdminMixin):
         # Then get the history for this object.
         opts = model._meta
         app_label = opts.app_label
-
         context = {
             **self.admin_site.each_context(request),
             'title': _('Change history: %s') % obj,
@@ -197,7 +196,6 @@ class AuditlogAdminHistoryMixin(LogEntryAdminMixin):
         }
 
         request.current_app = self.admin_site.name
-
         return TemplateResponse(request, self.object_history_template or [
             "admin/%s/%s/auditlog_history.html" % (app_label, opts.model_name),
             "admin/%s/auditlog_history.html" % app_label,

@@ -6,7 +6,8 @@ from typing import Any, Dict, List
 from dateutil import parser
 from dateutil.tz import gettz
 from django.conf import settings
-from django.contrib.contenttypes.fields import GenericRelation, GenericForeignKey
+from django.contrib.admin.options import get_content_type_for_model
+from django.contrib.contenttypes.fields import GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.core import serializers
 from django.core.exceptions import FieldDoesNotExist
@@ -56,7 +57,7 @@ class LogEntryManager(models.Manager):
         pk = self._get_pk_value(instance)
         if changes is not None:
             kwargs.setdefault(
-                "content_type", ContentType.objects.get_for_model(instance)
+                "content_type", get_content_type_for_model(instance)
             )
             kwargs.setdefault("object_pk", str(pk))
             kwargs.setdefault("object_repr", smart_str(instance))
