@@ -1,4 +1,5 @@
 import datetime
+from time import time
 
 from celery import current_app as app
 from celery_batches import Batches
@@ -8,16 +9,20 @@ from django.utils import timezone
 
 from auditlog.models import LogEntry
 
+BATCH_SIZE = getattr(settings, 'AUDITLOG_CELERY_BATCH_SIZE', 8)
+FLUSH_INTERVAL = getattr(settings, 'AUDITLOG_CELERY_FLUSH_INTERVAL', 1)
 
-@app.task(base=Batches, flush_every=100, flush_interval=10)
+
+@app.task(base=Batches, flush_every=BATCH_SIZE, flush_interval=FLUSH_INTERVAL)
 def save_log_entries(requests):
     to_create = []
+    start = time()
     for request in requests:
         to_create.append(LogEntry(**request.kwargs))
         if not settings.CELERY_TASK_ALWAYS_EAGER:
             app.backend.mark_as_done(request.id, None, request=request)
-
-    return LogEntry.objects.bulk_create(to_create)
+    LogEntry.objects.bulk_create(to_create)
+    print(f"Created {len(to_create)} log entries in {time() - start}s")
 
 
 @app.task
