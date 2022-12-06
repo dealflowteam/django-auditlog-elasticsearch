@@ -60,7 +60,14 @@ class LogEntryManager(models.Manager):
                 "content_type", get_content_type_for_model(instance)
             )
             kwargs.setdefault("object_pk", str(pk))
-            kwargs.setdefault("object_repr", smart_str(instance))
+            try:
+                object_repr = smart_str(instance)
+            except Exception as ex:
+                if kwargs['action'] == LogEntry.Action.DELETE:
+                    object_repr = str(ex)
+                else:
+                    raise
+            kwargs.setdefault("object_repr", object_repr)
             kwargs.setdefault(
                 "serialized_data", self._get_serialized_data_or_none(instance)
             )
