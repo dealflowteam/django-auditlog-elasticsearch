@@ -71,7 +71,10 @@ def get_field_value(obj, field):
     elif isinstance(field, JSONField):
         value = field.to_python(getattr(obj, field.name, None))
     else:
-        value = smart_str(value, strings_only=True)
+        try:
+            value = smart_str(value, strings_only=True)
+        except Exception as e:
+            value = f'<serialization_error: {e} of obj {type(value)}, pk:{getattr(value, "pk", None)}>'
 
     return value
 
