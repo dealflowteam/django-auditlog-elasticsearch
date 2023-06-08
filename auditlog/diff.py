@@ -1,6 +1,6 @@
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import NOT_PROVIDED, DateTimeField, JSONField, Model
+from django.db.models import NOT_PROVIDED, DateTimeField, JSONField, Model, Field
 from django.utils import timezone
 from django.utils.encoding import smart_str
 
@@ -61,7 +61,10 @@ def get_field_value(obj, field):
     try:
         value = getattr(obj, field.name, None)
     except ObjectDoesNotExist:
-        value = field.default if field.default is not NOT_PROVIDED else None
+        if isinstance(field, Field):
+            value = field.default if field.default is not NOT_PROVIDED else None
+        else:
+            value = None
     if isinstance(field, DateTimeField):
         # DateTimeFields are timezone-aware, so we need to convert the field
         # to its naive form before we can accurately compare them for changes.
