@@ -20,7 +20,7 @@ class LogEntryAdmin(LogEntryAdminMixin, admin.ModelAdmin):
         "changes",
         "actor__first_name",
         "actor__last_name",
-        "actor__username",
+        "actor__email",
     ]
     list_filter = ["action", ResourceTypeFilter]
     readonly_fields = ["created", "resource_url", "action", "user_url", "msg", "additional_data", "serialized_data"]
