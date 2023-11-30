@@ -7,7 +7,7 @@ from dateutil import parser
 from dateutil.tz import gettz
 from django.conf import settings
 from django.contrib.admin.options import get_content_type_for_model
-from django.contrib.contenttypes.fields import GenericRelation
+from django.contrib.contenttypes.fields import GenericRelation, GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core import serializers
 from django.core.exceptions import FieldDoesNotExist
@@ -320,6 +320,18 @@ class LogEntryManager(models.Manager):
         return data
 
 
+class HashIdGenericForeignKey(GenericForeignKey):
+    def get_prefetch_queryset(self, instances, queryset=None):
+        rel_qs, rel_obj_attr, instance_attr, single, cache_name, is_descriptor = super().get_prefetch_queryset(
+            instances, queryset)
+        return (rel_qs,
+                lambda obj: (obj._meta.pk.get_prep_value(obj.pk), obj.__class__),
+                instance_attr,
+                single,
+                cache_name,
+                is_descriptor)
+
+
 class LogEntry(models.Model):
     """
     Represents an entry in the audit log. The content type is saved along with the textual and numeric
@@ -357,6 +369,8 @@ class LogEntry(models.Model):
     object_id = models.BigIntegerField(
         blank=True, db_index=True, null=True, verbose_name=_("object id")
     )
+    object = GenericForeignKey('content_type', 'object_id', )
+    object_by_pk = HashIdGenericForeignKey('content_type', 'object_pk', )
     object_repr = models.TextField(verbose_name=_("object representation"))
     serialized_data = models.JSONField(null=True)
     action = models.PositiveSmallIntegerField(
@@ -510,6 +524,8 @@ class LogEntry(models.Model):
     def save(self, force_insert=False, force_update=False, using=None,
              update_fields=None):
         backend = get_backend()
+        if self.object_pk is None and self.object_id:
+            self.object_pk = str(self.object.pk)
         if backend == 'db':
             return super().save(force_insert, force_update, using, update_fields)
         else:
