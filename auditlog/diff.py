@@ -1,6 +1,8 @@
 from django.conf import settings
+from django.contrib.contenttypes.fields import GenericRelation
 from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import NOT_PROVIDED, DateTimeField, JSONField, Model, Field
+from django.db.models import NOT_PROVIDED, DateTimeField, JSONField, Model, Field, ManyToOneRel
+from django.db.models.fields.related import RelatedField
 from django.utils import timezone
 from django.utils.encoding import smart_str
 
@@ -58,14 +60,13 @@ def get_field_value(obj, field):
     :return: The value of the field as a string.
     :rtype: str
     """
-    try:
-        value = getattr(obj, field.name, None)
-    except ObjectDoesNotExist:
-        if isinstance(field, Field):
-            value = field.default if field.default is not NOT_PROVIDED else None
-        else:
-            value = None
-    if isinstance(field, DateTimeField):
+    if obj is None:
+        return None
+    if isinstance(field, (GenericRelation, ManyToOneRel)):
+        value = None
+    elif isinstance(field, RelatedField):
+        value = getattr(obj, field.get_attname())
+    elif isinstance(field, DateTimeField):
         # DateTimeFields are timezone-aware, so we need to convert the field
         # to its naive form before we can accurately compare them for changes.
         value = field.to_python(getattr(obj, field.name, None))
@@ -74,6 +75,13 @@ def get_field_value(obj, field):
     elif isinstance(field, JSONField):
         value = field.to_python(getattr(obj, field.name, None))
     else:
+        try:
+            value = getattr(obj, field.name, None)
+        except ObjectDoesNotExist:
+            if isinstance(field, Field):
+                value = field.default if field.default is not NOT_PROVIDED else None
+            else:
+                value = None
         try:
             value = smart_str(value, strings_only=True)
         except Exception as e:

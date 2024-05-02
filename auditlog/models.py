@@ -82,13 +82,7 @@ class LogEntryManager(models.Manager):
             # Delete log entries with the same pk as a newly created model.
             # This should only be necessary when an pk is used twice.
             if kwargs.get("action", None) is LogEntry.Action.CREATE:
-                if (
-                    kwargs.get("object_id", None) is not None
-                    and self.filter(
-                    content_type=kwargs.get("content_type"),
-                    object_id=kwargs.get("object_id"),
-                ).exists()
-                ):
+                if kwargs.get("object_id", None) is not None:
                     self.filter(
                         content_type=kwargs.get("content_type"),
                         object_id=kwargs.get("object_id"),
