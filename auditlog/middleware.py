@@ -20,7 +20,10 @@ class AuditlogMiddleware:
             # In case of proxy, set 'original' address
             remote_addr = request.headers.get("X-Forwarded-For").split(",")[0]
             # Remove port number from remote_addr
-            return remote_addr.split(":")[0]
+            if remote_addr.count(':') > 1:  # IPv6
+                return remote_addr.split(']')[0].replace('[', '')
+            else:
+                return remote_addr.split(":")[0]
         else:
             return request.META.get("REMOTE_ADDR")
 

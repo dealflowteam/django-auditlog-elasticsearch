@@ -13,7 +13,9 @@ BATCH_SIZE = getattr(settings, 'AUDITLOG_CELERY_BATCH_SIZE', 8)
 FLUSH_INTERVAL = getattr(settings, 'AUDITLOG_CELERY_FLUSH_INTERVAL', 1)
 
 
-@app.task(base=Batches, flush_every=BATCH_SIZE, flush_interval=FLUSH_INTERVAL)
+@app.task(base=Batches, flush_every=BATCH_SIZE, flush_interval=FLUSH_INTERVAL,
+          autoretry_for=(Exception,), max_retries=None, retry_backoff=True,
+          retry_backoff_max=60 * 60 * 24)
 def save_log_entries(requests):
     to_create = []
     start = time()
