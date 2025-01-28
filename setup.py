@@ -11,6 +11,7 @@ setup(
     use_scm_version={"version_scheme": "post-release"},
     setup_requires=["setuptools_scm"],
     packages=find_packages(exclude=['auditlog_tests.*']),
+    include_package_data=True,
     url="https://github.com/jazzband/django-auditlog",
     project_urls={
         "Documentation": "https://django-auditlog.readthedocs.io",
