@@ -386,7 +386,9 @@ class LogEntry(models.Model):
         db_index=True, default=timezone.now, verbose_name=_("timestamp")
     )
     additional_data = models.JSONField(
-        blank=True, null=True, verbose_name=_("additional data")
+        blank=True, null=True, verbose_name=_("additional data"),
+        help_text=_("Additional data to store in the log entry. "
+                    "Can be returned by 'get_additional_data' method of log entry object")
     )
 
     objects = LogEntryManager()
