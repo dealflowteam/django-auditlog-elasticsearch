@@ -41,7 +41,15 @@ class LogEntryManager(models.Manager):
     """
     Custom manager for the :py:class:`LogEntry` model.
     """
-
+    def _create(self,instance,kwargs):
+        # save LogEntry to same database instance is using
+        db = instance._state.db
+        log_entry = self.model(**kwargs) if db is None or db == '' else self.using(db).model(**kwargs)
+        if getattr(settings, 'AUDITLOG_ON_COMMIT', False):
+            transaction.on_commit(log_entry.save)
+        else:
+            log_entry.save()
+        return log_entry
     def log_create(self, instance, **kwargs):
         """
         Helper method to create a new log entry. This method automatically populates some fields when no
@@ -92,14 +100,7 @@ class LogEntryManager(models.Manager):
                         content_type=kwargs.get("content_type"),
                         object_pk=kwargs.get("object_pk", ""),
                     ).delete()
-            # save LogEntry to same database instance is using
-            db = instance._state.db
-            log_entry = self.model(**kwargs) if db is None or db == '' else self.using(db).model(**kwargs)
-            if getattr(settings, 'AUDITLOG_ON_COMMIT', False):
-                transaction.on_commit(log_entry.save)
-            else:
-                log_entry.save()
-            return log_entry
+            return self._create(instance, kwargs)
         return None
 
     def log_m2m_changes(
@@ -145,8 +146,7 @@ class LogEntryManager(models.Manager):
                     "objects": objects,
                 }
             }
-
-            return self.create(**kwargs)
+            return self._create(instance, kwargs)
 
         return None
 

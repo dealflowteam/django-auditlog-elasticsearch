@@ -92,7 +92,7 @@ class LogEntryAdminMixin:
             msg.append("</table>")
 
         if m2m_changes:
-            msg.append("<table>")
+            msg.append("<table class='grp-table'>")
             msg.append(self._format_header("#", "Relationship", "Action", "Objects"))
             for i, (field, change) in enumerate(sorted(m2m_changes.items()), 1):
                 change_html = format_html_join(
