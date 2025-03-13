@@ -233,7 +233,7 @@ class LogEntryManager(models.Manager):
         :type instance: Model
         :return: The primary key value of the given model instance.
         """
-        pk_field = instance._meta.pk.name
+        pk_field = instance._meta.pk.attname
         pk = getattr(instance, pk_field, None)
         # Check to make sure that we got an pk not a model object.
         if isinstance(pk, models.Model):
