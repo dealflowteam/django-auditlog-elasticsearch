@@ -3,3 +3,5 @@ target-version = ["py37"]
 
 [tool.isort]
 profile = "black"
+[tool.ruff]
+exclude = ["**"]

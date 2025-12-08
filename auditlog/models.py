@@ -41,7 +41,8 @@ class LogEntryManager(models.Manager):
     """
     Custom manager for the :py:class:`LogEntry` model.
     """
-    def _create(self,instance,kwargs):
+
+    def _create(self, instance, kwargs):
         # save LogEntry to same database instance is using
         db = instance._state.db
         log_entry = self.model(**kwargs) if db is None or db == '' else self.using(db).model(**kwargs)
@@ -50,6 +51,7 @@ class LogEntryManager(models.Manager):
         else:
             log_entry.save()
         return log_entry
+
     def log_create(self, instance, **kwargs):
         """
         Helper method to create a new log entry. This method automatically populates some fields when no
@@ -64,14 +66,12 @@ class LogEntryManager(models.Manager):
         changes = kwargs.get("changes", None)
         pk = self._get_pk_value(instance)
         if changes is not None:
-            kwargs.setdefault(
-                "content_type", get_content_type_for_model(instance)
-            )
+            kwargs.setdefault("content_type", get_content_type_for_model(instance))
             kwargs.setdefault("object_pk", str(pk))
             try:
                 object_repr = smart_str(instance)
             except Exception as ex:
-                if kwargs['action'] == LogEntry.Action.DELETE:
+                if kwargs["action"] == LogEntry.Action.DELETE:
                     object_repr = str(ex)
                 else:
                     raise
@@ -86,22 +86,21 @@ class LogEntryManager(models.Manager):
             get_additional_data = getattr(instance, "get_additional_data", None)
             if callable(get_additional_data):
                 kwargs.setdefault("additional_data", get_additional_data())
-
-            # Delete log entries with the same pk as a newly created model.
-            # This should only be necessary when an pk is used twice.
-            if kwargs.get("action", None) is LogEntry.Action.CREATE:
-                if kwargs.get("object_id", None) is not None:
-                    self.filter(
-                        content_type=kwargs.get("content_type"),
-                        object_id=kwargs.get("object_id"),
-                    ).delete()
-                else:
-                    self.filter(
-                        content_type=kwargs.get("content_type"),
-                        object_pk=kwargs.get("object_pk", ""),
-                    ).delete()
             return self._create(instance, kwargs)
         return None
+
+    def clear_logs(self, log_entry):
+        # Delete log entries with the same pk as a newly created model.
+        # This should only be necessary when an pk is used twice.
+        if log_entry.action == LogEntry.Action.CREATE:
+            self.filter(
+                content_type_id=log_entry.content_type_id,
+                **(
+                    {"object_id": log_entry.object_id}
+                    if log_entry.object_id is not None
+                    else {"object_pk": log_entry.object_pk}
+                ),
+            ).delete()
 
     def log_m2m_changes(
         self, changed_queryset, instance, operation, field_name, **kwargs
@@ -318,11 +317,12 @@ class HashIdGenericForeignKey(GenericForeignKey):
     def get_prefetch_queryset(self, instances, queryset=None):
         rel_qs, rel_obj_attr, instance_attr, single, cache_name, is_descriptor = super().get_prefetch_queryset(
             instances, queryset)
-        return (rel_qs,
-                lambda obj: (obj._meta.pk.get_prep_value(obj.pk), obj.__class__),
-                instance_attr,
-                single,
-                cache_name,
+        return (
+            rel_qs,
+            lambda obj: (obj._meta.pk.get_prep_value(obj.pk), obj.__class__),
+            instance_attr,
+            single,
+            cache_name,
                 is_descriptor)
 
 
@@ -370,7 +370,9 @@ class LogEntry(models.Model):
     action = models.PositiveSmallIntegerField(
         choices=Action.choices, verbose_name=_("action"), db_index=True
     )
-    changes = models.JSONField(blank=True, verbose_name=_("change message"), encoder=DjangoJSONEncoder)
+    changes = models.JSONField(
+        blank=True, verbose_name=_("change message"), encoder=DjangoJSONEncoder
+    )
     actor = models.ForeignKey(
         to=settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -386,8 +388,11 @@ class LogEntry(models.Model):
         db_index=True, default=timezone.now, verbose_name=_("timestamp")
     )
     additional_data = models.JSONField(
-        blank=True, null=True, verbose_name=_("additional data"),
-        help_text=_("Additional data to store in the log entry. "
+        blank=True,
+        null=True,
+        verbose_name=_("additional data"),
+        help_text=_(
+            "Additional data to store in the log entry. "
                     "Can be returned by 'get_additional_data' method of log entry object")
     )
 
@@ -471,8 +476,7 @@ class LogEntry(models.Model):
             choices_dict = None
             if getattr(field, "choices", []):
                 choices_dict = dict(field.choices)
-            if getattr(getattr(
-                field, "base_field", None), "choices", []):
+            if getattr(getattr(field, "base_field", None), "choices", []):
                 choices_dict = dict(field.base_field.choices)
 
             if choices_dict:
@@ -521,24 +525,32 @@ class LogEntry(models.Model):
             changes_display_dict[verbose_name] = values_display
         return changes_display_dict
 
-    def save(self, force_insert=False, force_update=False, using=None,
-             update_fields=None):
+    def save(
+        self, force_insert=False, force_update=False, using=None, update_fields=None
+    ):
         backend = get_backend()
         if self.object_pk is None and self.object_id:
             self.object_pk = str(self.object.pk)
         if backend == 'db':
+            LogEntry.objects.clear_logs(self)
             return super().save(force_insert, force_update, using, update_fields)
         else:
             pre_save.send(
-                sender=self.__class__, instance=self, raw=False, using=using,
+                sender=self.__class__,
+                instance=self,
+                raw=False,
+                using=using,
                 update_fields=update_fields,
             )
             if backend == 'celery':
                 data = {f: get_int_id(v) for f, v in self.__dict__.items() if f not in ['_state']}
                 from auditlog.tasks import save_log_entries
+
                 save_log_entries.delay(**data)
             elif backend == 'elastic':
                 from .documents import ElasticSearchLogEntry
+
+                LogEntry.objects.clear_logs(self)
                 ElasticSearchLogEntry.create_from_db_entry(self)
 
 
